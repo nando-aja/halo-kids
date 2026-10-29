@@ -5,9 +5,7 @@ export const adopsiService = {
   // SISI WARGA (PEMOHON COTA)
   // ==========================================
 
-  /**
-   * Pengecekan kelayakan awal pemohon COTA (usia 30-55 thn, usia pernikahan >= 5 thn)
-   */
+  /** Pengecekan kelayakan awal pemohon COTA. */
   async checkEligibility({ tanggal_lahir_pemohon, tanggal_pernikahan }) {
     const response = await apiClient.post('/api/masyarakat/pengajuan-adopsi/cek-kelayakan', {
       nama_pemohon: 'Pengecekan Kelayakan',
@@ -19,10 +17,7 @@ export const adopsiService = {
     return response.data;
   },
 
-  /**
-   * Unggah dokumen fisik KTP & KK menggunakan multipart/form-data
-   * Backend langsung memicu Single-Agent AI OCR internal untuk ekstraksi dan skor confidence
-   */
+  /** Upload KTP dan KK via multipart/form-data. */
   async uploadKtpKk(ktpFile, kkFile) {
     const formData = new FormData();
     formData.append('ktp', ktpFile);
@@ -38,9 +33,7 @@ export const adopsiService = {
     return this.uploadKtpKk(ktpFile, kkFile);
   },
 
-  /**
-   * Unggah 4 berkas awal COTA (Akta kelahiran, Buku nikah, SKCK, Surat Sehat)
-   */
+  /** Upload empat berkas awal COTA. */
   async uploadDokumenAwal({ aktaKelahiran, bukuNikah, skck, suratSehat }) {
     const formData = new FormData();
     if (aktaKelahiran) formData.append('akta_kelahiran', aktaKelahiran);
@@ -54,9 +47,7 @@ export const adopsiService = {
     return response.data;
   },
 
-  /**
-   * Unggah dokumen tambahan adopsi
-   */
+  /** Upload dokumen tambahan adopsi. */
   async uploadDokumenTambahan(jenisDokumen, file) {
     const formData = new FormData();
     formData.append('file', file);
@@ -68,9 +59,7 @@ export const adopsiService = {
     return response.data;
   },
 
-  /**
-   * Submit berkas pengajuan adopsi COTA secara lengkap
-   */
+  /** Submit pengajuan COTA lengkap. */
   async submitPengajuan(data) {
     const response = await apiClient.post('/api/masyarakat/pengajuan-adopsi', data);
     return response.data;
@@ -80,17 +69,13 @@ export const adopsiService = {
     return this.submitPengajuan(data);
   },
 
-  /**
-   * Mengambil daftar riwayat pengajuan adopsi milik pemohon
-   */
+  /** Daftar riwayat pengajuan milik pemohon. */
   async getMyAdoptions() {
     const response = await apiClient.get('/api/masyarakat/pengajuan-adopsi');
     return response.data;
   },
 
-  /**
-   * Mengambil detail pengajuan adopsi milik pemohon
-   */
+  /** Detail pengajuan milik pemohon. */
   async getMyAdoptionDetail(id) {
     const response = await apiClient.get(`/api/masyarakat/pengajuan-adopsi/${id}`);
     return response.data;
@@ -100,41 +85,58 @@ export const adopsiService = {
   // SISI SUPER ADMIN DINSOS (VERIFIKASI & AI)
   // ==========================================
 
-  /**
-   * Mengambil seluruh antrean berkas adopsi COTA
-   */
+  /** Daftar antrean berkas adopsi COTA. */
   async getAdminAdoptions() {
     const response = await apiClient.get('/api/admin/pengajuan-adopsi');
     return response.data;
   },
 
-  /**
-   * Mengambil detail berkas adopsi lengkap beserta hasil analisis AI Single-Agent
-   */
+  /** Detail berkas adopsi lengkap dengan hasil AI. */
   async getAdminAdoptionDetail(id) {
     const response = await apiClient.get(`/api/admin/pengajuan-adopsi/${id}`);
     return response.data;
   },
 
   /**
-   * Memicu analisis ulang dokumen COTA menggunakan model AI Internal
+   * Mengambil dokumen fisik dari endpoint admin yang memeriksa role dan record.
+   * Respons berupa Blob agar dapat ditampilkan sebagai gambar/PDF.
    */
+  async getAdminAdoptionDocument(id, dokumenKey) {
+    try {
+      const response = await apiClient.get(
+        `/api/admin/pengajuan-adopsi/${id}/dokumen/${encodeURIComponent(dokumenKey)}`,
+        { responseType: 'blob' }
+      );
+      return response.data;
+    } catch (error) {
+      // Dengan responseType 'blob', pesan error FastAPI ikut menjadi Blob.
+      // Baca isinya supaya admin melihat penyebab sebenarnya (mis. berkas tidak ada di Supabase).
+      const body = error?.response?.data;
+      if (body instanceof Blob) {
+        try {
+          const parsed = JSON.parse(await body.text());
+          const detail = typeof parsed?.detail === 'string' ? parsed.detail : parsed?.message;
+          if (detail) error.friendlyMessage = detail;
+        } catch {
+          // biarkan pesan bawaan
+        }
+      }
+      throw error;
+    }
+  },
+
+  /** Analisis ulang dokumen COTA menggunakan AI internal backend. */
   async reanalyzeAdoptionAI(id) {
     const response = await apiClient.post(`/api/admin/pengajuan-adopsi/${id}/analisis-ai`);
     return response.data;
   },
 
-  /**
-   * Memperbarui keputusan verifikasi Admin Dinsos:
-   * 'diverifikasi' (Setujui Dokumen) | 'butuh_dokumen_tambahan' (Minta Unggah Ulang) | 'ditolak' (Tolak)
-   */
+  /** Memperbarui status keputusan verifikasi admin. */
   async updateAdoptionStatus(id, newStatus) {
     const response = await apiClient.patch(
       `/api/admin/pengajuan-adopsi/${id}/status`,
       null,
-      {
-        params: { new_status: newStatus },
-      }
+      { params: { new_status: newStatus } }
     );
     return response.data;
   },

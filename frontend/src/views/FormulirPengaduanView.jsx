@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Shield,
   ShieldAlert,
@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import Footer from '../components/Footer';
-import pengaduanService from '../api/pengaduanService';
+import pengaduanService, { createReportSubmissionKey } from '../api/pengaduanService';
 
 export default function FormulirPengaduanView({
   isLoggedIn,
@@ -67,7 +67,11 @@ export default function FormulirPengaduanView({
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [isAgreed, setIsAgreed] = useState(false);
   const [submittedTicket, setSubmittedTicket] = useState(null);
+  const [submittedAttachmentCount, setSubmittedAttachmentCount] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const submitLock = useRef(false);
+  const submissionKey = useRef(createReportSubmissionKey());
 
   const toggleCategory = (catTitle) => {
     if (selectedCategories.includes(catTitle)) {
@@ -81,26 +85,54 @@ export default function FormulirPengaduanView({
 
   const handleFileUpload = (e) => {
     const files = Array.from(e.target.files || []);
-    if (files.length > 0) {
-      const newFiles = files.map(f => ({
-        name: f.name,
-        size: (f.size / (1024 * 1024)).toFixed(1) + ' MB',
-        tag: 'EXIF Sanitized',
-        status: 'Tersimpan'
-      }));
-      setUploadedFiles([...uploadedFiles, ...newFiles]);
+    if (!files.length) return;
+
+    const allowedTypes = new Set(['image/jpeg', 'image/png', 'application/pdf']);
+    const validFiles = files.filter((file) => {
+      const validType = allowedTypes.has(file.type) || /\.(jpe?g|png|pdf)$/i.test(file.name);
+      const validSize = file.size <= 10 * 1024 * 1024;
+      if (!validType || !validSize) {
+        setSubmitError(`${file.name}: pilih PDF, JPG, atau PNG maksimal 10 MB.`);
+        return false;
+      }
+      return true;
+    });
+
+    if (validFiles.length) {
+      const remainingSlots = Math.max(0, 5 - uploadedFiles.length);
+      const filesToAdd = validFiles.slice(0, remainingSlots);
+      if (filesToAdd.length < validFiles.length) {
+        setSubmitError('Maksimal 5 lampiran per laporan. Sebagian file tidak ditambahkan.');
+      } else {
+        setSubmitError('');
+      }
+      if (filesToAdd.length > 0) {
+        setUploadedFiles((prev) => [
+          ...prev,
+          ...filesToAdd.map((file) => ({
+            file,
+            name: file.name,
+            size: (file.size / (1024 * 1024)).toFixed(1) + ' MB',
+            tag: 'Akan disimpan secara privat saat submit',
+            status: 'Siap diunggah'
+          }))
+        ]);
+      }
     }
+    e.target.value = '';
   };
 
   const removeFile = (index) => {
-    setUploadedFiles(uploadedFiles.filter((_, i) => i !== index));
+    setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!isAgreed) return;
+    if (!isAgreed || submitLock.current || isSubmitting || submittedTicket) return;
 
+    submitLock.current = true;
     setIsSubmitting(true);
+    setSubmitError('');
     try {
       const combinedReport = [
         `[Kategori]: ${selectedCategories.join(', ')}`,
@@ -113,11 +145,17 @@ export default function FormulirPengaduanView({
 
       const response = await pengaduanService.createPengaduan({
         isi_laporan: combinedReport,
-        jenis_laporan: selectedCategories[0] || 'Kekerasan Anak'
+        jenis_laporan: selectedCategories[0] || 'Kekerasan Anak',
+        submission_key: submissionKey.current,
+        files: uploadedFiles.map((item) => item.file).filter(Boolean),
       });
 
-      const ticketCode = response.kode_tiket || response.ticket_code;
+      const ticketCode = response?.kode_tiket;
+      if (!ticketCode) {
+        throw new Error('Server belum mengonfirmasi penyimpanan laporan. Kode tiket tidak diterima.');
+      }
       setSubmittedTicket(ticketCode);
+      setSubmittedAttachmentCount(Number(response?.lampiran_tersimpan) || 0);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('halokids:data_updated', { detail: { type: 'pengaduan' } }));
       }
@@ -129,12 +167,34 @@ export default function FormulirPengaduanView({
         });
       } catch (err) {}
     } catch (err) {
-      console.warn('Gagal mengirim aduan ke backend, beralih ke fallback tiket:', err);
-      const fallbackTicket = 'HK-' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + '-' + Math.floor(100000 + Math.random() * 900000);
-      setSubmittedTicket(fallbackTicket);
+      console.error('Pengiriman pengaduan gagal:', err);
+      setSubmitError(err?.friendlyMessage || err?.message || 'Pengiriman gagal. Laporan belum dikonfirmasi tersimpan. Coba kembali setelah koneksi diperiksa.');
     } finally {
+      submitLock.current = false;
       setIsSubmitting(false);
     }
+  };
+
+  const resetAfterSuccessfulSubmit = () => {
+    setSubmittedTicket(null);
+    setSubmittedAttachmentCount(0);
+    setSubmitError('');
+    setIdentityMode('anonymous');
+    setWaNumber('');
+    setEmail('');
+    setNamaTerang('');
+    setNik('');
+    setSelectedCategories(['Kekerasan Fisik, Psikis, & Seksual']);
+    setTanggal('');
+    setJam('');
+    setKecamatan('');
+    setAlamat('');
+    setUsiaKorban('');
+    setJumlahAnak('');
+    setKronologi('');
+    setUploadedFiles([]);
+    setIsAgreed(false);
+    submissionKey.current = createReportSubmissionKey();
   };
 
   return (
@@ -667,6 +727,7 @@ export default function FormulirPengaduanView({
                     type="file" 
                     id="file-upload-input" 
                     multiple 
+                    accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
                     onChange={handleFileUpload}
                     style={{ display: 'none' }}
                   />
@@ -685,10 +746,10 @@ export default function FormulirPengaduanView({
                       <Upload size={24} />
                     </div>
                     <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0b1f5c', margin: '0 0 0.35rem 0' }}>
-                      Tarik &amp; Letakkan Berkas atau Klik untuk Memilih
+                      Pilih Foto atau Dokumen Bukti
                     </h4>
                     <p style={{ fontSize: '0.75rem', color: '#64748b', margin: 0, maxWidth: '480px', margin: '0 auto' }}>
-                      Dukungan format: Foto (JPG/PNG), Rekaman Suara (MP3/M4A), Tangkapan Layar Chat, Video pendek, atau Surat Izin Dokumen (Maks. 25 MB per berkas)
+                      Format JPG, PNG, atau PDF; maksimal 10 MB per file dan 5 file. File akan diunggah ke bucket privat Supabase saat laporan dikirim.
                     </p>
                   </label>
                 </div>
@@ -720,7 +781,7 @@ export default function FormulirPengaduanView({
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <span style={{ background: '#dcfce7', color: '#15803d', fontSize: '0.675rem', fontWeight: 800, padding: '0.15rem 0.5rem', borderRadius: '4px' }}>
+                          <span style={{ background: '#fef3c7', color: '#92400e', fontSize: '0.675rem', fontWeight: 800, padding: '0.15rem 0.5rem', borderRadius: '4px' }}>
                             {file.status}
                           </span>
                           <button
@@ -759,6 +820,12 @@ export default function FormulirPengaduanView({
                   </span>
                 </label>
 
+                {submitError && (
+                  <div role="alert" style={{ marginBottom: '1rem', background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: '10px', padding: '0.85rem 1rem', fontSize: '0.85rem' }}>
+                    <strong>Belum terkirim:</strong> {submitError}
+                  </div>
+                )}
+
                 {/* Submit Row */}
                 <div className="flex flex-col sm:flex-row justify-end items-stretch sm:items-center gap-3">
 
@@ -783,7 +850,7 @@ export default function FormulirPengaduanView({
                     }}
                   >
                     <Send size={18} />
-                    {isSubmitting ? 'Mengirim & Enkripsi...' : 'Kirim Laporan Pengaduan (Aman & Terenkripsi)'}
+                    {isSubmitting ? 'Mengirim & Mengunggah Bukti...' : 'Kirim Laporan Pengaduan (Aman & Terenkripsi)'}
                   </button>
                 </div>
               </div>
@@ -792,7 +859,7 @@ export default function FormulirPengaduanView({
 
             {/* Success Dialog Modal after Form Submission */}
             {submittedTicket && (
-              <div className="modal-overlay" onClick={() => setSubmittedTicket(null)}>
+              <div className="modal-overlay" onClick={resetAfterSuccessfulSubmit}>
                 <div className="modal-container" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '540px', padding: '2rem', textAlign: 'center' }}>
                   <div style={{
                     background: '#dcfce7',
@@ -813,7 +880,7 @@ export default function FormulirPengaduanView({
                   </h3>
                   
                   <p style={{ fontSize: '0.875rem', color: '#475569', marginBottom: '1.25rem', lineHeight: 1.5 }}>
-                    Sistem otomatis Satgas Reaksi Cepat (TRC) Dinas Sosial telah menerima laporan terenkripsi Anda. Simpan Kode Tiket di bawah ini:
+                    Server telah mengonfirmasi laporan tersimpan. Simpan kode tiket resmi di bawah ini:
                   </p>
 
                   <div style={{
@@ -833,12 +900,17 @@ export default function FormulirPengaduanView({
                     </span>
                   </div>
 
+                  <p style={{ fontSize: '0.8rem', color: submittedAttachmentCount > 0 ? '#15803d' : '#64748b', fontWeight: submittedAttachmentCount > 0 ? 700 : 500, marginBottom: '0.65rem' }}>
+                    {submittedAttachmentCount > 0
+                      ? `${submittedAttachmentCount} lampiran berhasil disimpan di Supabase Storage privat.`
+                      : 'Laporan tersimpan tanpa lampiran.'}
+                  </p>
                   <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '1.5rem' }}>
-                    Kode Tiket ini digunakan untuk memantau proses tindak lanjut Pekerja Sosial Lapangan melalui Portal Lacak Status Tiket.
+                    Kode Tiket ini digunakan untuk memantau proses tindak lanjut melalui Portal Lacak Status Tiket.
                   </p>
 
                   <button 
-                    onClick={() => setSubmittedTicket(null)}
+                    onClick={resetAfterSuccessfulSubmit}
                     className="btn btn-primary"
                     style={{ width: '100%' }}
                   >

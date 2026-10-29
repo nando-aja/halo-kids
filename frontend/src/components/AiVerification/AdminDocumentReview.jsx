@@ -25,6 +25,7 @@ import {
   X
 } from 'lucide-react';
 import DocumentCanvasPreview from './DocumentCanvasPreview';
+import CotaAiResultPanel, { summarizeAiResult } from './CotaAiResultPanel';
 import { MOCK_AI_DOCUMENTS, REJECTION_REASONS, REUPLOAD_REASONS } from './mockAiData';
 import adopsiService from '../../api/adopsiService';
 
@@ -43,7 +44,10 @@ export default function AdminDocumentReview({
   selectedApplicant = null,
   onApprove,
   onReupload,
-  onReject
+  onReject,
+  onReanalyzeAI,
+  isAnalyzingAI = false,
+  isSavingDecision = false
 }) {
   // Modal visibility & close handler
   const [internalOpen, setInternalOpen] = useState(true);
@@ -122,6 +126,102 @@ export default function AdminDocumentReview({
 
   // Toast / Status Message
   const [toastMessage, setToastMessage] = useState(null);
+  const [reanalyzedResult, setReanalyzedResult] = useState(null);
+  const [isLocalReanalyzing, setIsLocalReanalyzing] = useState(false);
+  const [selectedActualDocKey, setSelectedActualDocKey] = useState('');
+  const [actualPreview, setActualPreview] = useState({ loading: false, url: '', mime: '', error: '' });
+
+  // Dokumen COTA yang tercatat di database. KTP/KK dan supporting dictionary
+  // dapat dibuka lewat endpoint admin yang memeriksa autentikasi.
+  const actualDocuments = React.useMemo(() => {
+    if (!selectedApplicant?.rawId) return [];
+    const rows = [];
+    const add = (key, label, path, previewable = true) => {
+      if (path) rows.push({ key, label, path: String(path), previewable });
+    };
+    add('ktp', 'KTP Pemohon', selectedApplicant.dokumen_ktp);
+    add('kk', 'Kartu Keluarga (KK)', selectedApplicant.dokumen_kk);
+
+    const supporting = selectedApplicant.dokumen_pendukung;
+    if (supporting && typeof supporting === 'object' && !Array.isArray(supporting)) {
+      Object.entries(supporting).forEach(([key, path]) => {
+        add(key, key.replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()), path);
+      });
+    } else if (Array.isArray(supporting)) {
+      supporting.forEach((path, index) => {
+        // Daftar lama hanya menyimpan path, belum punya nama key untuk endpoint admin.
+        add(`dokumen_pendukung_${index + 1}`, `Dokumen Pendukung ${index + 1}`, path, true);
+      });
+    }
+    return rows;
+  }, [selectedApplicant]);
+  const actualDocumentSignature = actualDocuments.map((doc) => `${doc.key}:${doc.path}`).join('|');
+  const selectedActualDoc = actualDocuments.find((doc) => doc.key === selectedActualDocKey) || actualDocuments[0] || null;
+
+  // Gunakan hasil yang dikirim backend, bukan hasil mock, bila ada pengajuan nyata.
+  const liveAiResult = React.useMemo(() => {
+    const source = reanalyzedResult ?? selectedApplicant?.hasil_ekstraksi_ai ?? null;
+    if (source == null || source === '') return null;
+    if (typeof source === 'string') {
+      try {
+        return JSON.parse(source);
+      } catch {
+        return { output: source };
+      }
+    }
+    return source;
+  }, [reanalyzedResult, selectedApplicant]);
+
+  useEffect(() => {
+    setReanalyzedResult(null);
+    setSelectedActualDocKey(actualDocuments[0]?.key || '');
+  }, [selectedApplicant?.rawId, actualDocumentSignature]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl = '';
+
+    const loadActualDocument = async () => {
+      if (!selectedApplicant?.rawId || !selectedActualDoc) {
+        setActualPreview({ loading: false, url: '', mime: '', error: '' });
+        return;
+      }
+      if (!selectedActualDoc.previewable) {
+        setActualPreview({
+          loading: false,
+          url: '',
+          mime: '',
+          error: 'Format database lama hanya menyimpan daftar path tanpa key dokumen. Dokumen ini perlu dinormalisasi ke objek dokumen_pendukung di backend.',
+        });
+        return;
+      }
+
+      setActualPreview({ loading: true, url: '', mime: '', error: '' });
+      try {
+        const blob = await adopsiService.getAdminAdoptionDocument(
+          selectedApplicant.rawId,
+          selectedActualDoc.key
+        );
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setActualPreview({ loading: false, url: objectUrl, mime: blob.type || '', error: '' });
+      } catch (err) {
+        if (cancelled) return;
+        setActualPreview({
+          loading: false,
+          url: '',
+          mime: '',
+          error: err?.friendlyMessage || err?.message || 'Dokumen tidak dapat dimuat dari backend. Periksa endpoint dan lokasi penyimpanan.',
+        });
+      }
+    };
+
+    loadActualDocument();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [selectedApplicant?.rawId, selectedActualDocKey, actualDocumentSignature]);
 
   const showToast = (text, type = 'success') => {
     setToastMessage({ text, type });
@@ -202,95 +302,110 @@ export default function AdminDocumentReview({
     });
   };
 
-  // Actions
-  const handleApproveDocument = async () => {
-    const targetId = selectedApplicant?.rawId || selectedApplicant?.id;
-    if (targetId && !isNaN(parseInt(targetId, 10))) {
-      try {
-        await adopsiService.updateAdoptionStatus(parseInt(targetId, 10), 'diverifikasi');
-      } catch (err) {
-        console.warn('Backend update adopsi status error:', err);
-      }
-    }
+  // Actions. A real application must be saved by the parent/backend before the UI
+  // reports success; local state is only a view update after a successful response.
+  const getSelectedApplicationId = () => {
+    const raw = selectedApplicant?.rawId ?? selectedApplicant?.id;
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
 
-    setDocList((prev) =>
-      prev.map((d) =>
-        d.id === activeDoc.id
-          ? { ...d, status: 'diverifikasi', skor_confidence: Math.max(d.skor_confidence, 98) }
-          : d
-      )
-    );
-    showToast(`Dokumen [${activeDoc.nama_dokumen}] Berhasil Disetujui & Divalidasi Sah!`, 'success');
-    if (onApprove) onApprove(activeDoc);
+  const handleApproveDocument = async () => {
+    if (!activeDoc) return;
+    try {
+      const targetId = getSelectedApplicationId();
+      if (onApprove) {
+        await onApprove(activeDoc);
+      } else if (targetId) {
+        await adopsiService.updateAdoptionStatus(targetId, 'diverifikasi');
+      } else {
+        throw new Error('ID pengajuan database tidak tersedia.');
+      }
+
+      setDocList((prev) => prev.map((doc) =>
+        doc.id === activeDoc.id
+          ? { ...doc, status: 'diverifikasi', skor_confidence: Math.max(Number(doc.skor_confidence) || 0, 98) }
+          : doc
+      ));
+      showToast(`Keputusan persetujuan berhasil disimpan untuk ${selectedApplicant?.applicant || 'pengajuan ini'}.`, 'success');
+    } catch (err) {
+      showToast(err?.friendlyMessage || err?.message || 'Gagal menyimpan persetujuan ke backend.', 'danger');
+    }
   };
 
   const handleSubmitReupload = async () => {
+    if (!activeDoc) return;
     const reasons = selectedReuploadReasons.join('; ');
     const note = customReuploadNote ? ` Catatan: ${customReuploadNote}` : '';
-    const targetId = selectedApplicant?.rawId || selectedApplicant?.id;
-    if (targetId && !isNaN(parseInt(targetId, 10))) {
-      try {
-        await adopsiService.updateAdoptionStatus(parseInt(targetId, 10), 'butuh_dokumen_tambahan');
-      } catch (err) {
-        console.warn('Backend update adopsi status error:', err);
+    try {
+      const targetId = getSelectedApplicationId();
+      if (onReupload) {
+        await onReupload(activeDoc, { reasons: selectedReuploadReasons, note: customReuploadNote });
+      } else if (targetId) {
+        await adopsiService.updateAdoptionStatus(targetId, 'butuh_dokumen_tambahan');
+      } else {
+        throw new Error('ID pengajuan database tidak tersedia.');
       }
-    }
 
-    setDocList((prev) =>
-      prev.map((d) =>
-        d.id === activeDoc.id
-          ? {
-              ...d,
-              status: 'menunggu_tinjauan_manual',
-              catatan_ai: `Permintaan Unggah Ulang Dikirim ke Pemohon: ${reasons}.${note}`
-            }
-          : d
-      )
-    );
-    setIsReuploadModalOpen(false);
-    showToast(`Notifikasi permintaan unggah ulang berhasil dikirimkan ke pemohon.`, 'warning');
-    if (onReupload) onReupload(activeDoc, { reasons: selectedReuploadReasons, note: customReuploadNote });
+      setDocList((prev) => prev.map((doc) =>
+        doc.id === activeDoc.id
+          ? { ...doc, status: 'butuh_dokumen_tambahan', catatan_ai: `Permintaan unggah ulang: ${reasons}.${note}` }
+          : doc
+      ));
+      setIsReuploadModalOpen(false);
+      showToast('Permintaan unggah ulang berhasil disimpan.', 'warning');
+    } catch (err) {
+      showToast(err?.friendlyMessage || err?.message || 'Gagal menyimpan permintaan unggah ulang.', 'danger');
+    }
   };
 
   const handleSubmitReject = async () => {
-    const selectedObj = REJECTION_REASONS.find((r) => r.id === selectedRejectReason);
-    const targetId = selectedApplicant?.rawId || selectedApplicant?.id;
-    if (targetId && !isNaN(parseInt(targetId, 10))) {
-      try {
-        await adopsiService.updateAdoptionStatus(parseInt(targetId, 10), 'ditolak');
-      } catch (err) {
-        console.warn('Backend update adopsi status error:', err);
+    if (!activeDoc) return;
+    const selectedObj = REJECTION_REASONS.find((reason) => reason.id === selectedRejectReason);
+    try {
+      const targetId = getSelectedApplicationId();
+      if (onReject) {
+        await onReject(activeDoc, { reason: selectedObj, note: customRejectNote });
+      } else if (targetId) {
+        await adopsiService.updateAdoptionStatus(targetId, 'ditolak');
+      } else {
+        throw new Error('ID pengajuan database tidak tersedia.');
       }
-    }
 
-    setDocList((prev) =>
-      prev.map((d) =>
-        d.id === activeDoc.id
-          ? {
-              ...d,
-              status: 'ditolak',
-              catatan_ai: `Dokumen Ditolak: ${selectedObj?.label}. Regulasi: ${selectedObj?.regulasi}. Catatan: ${customRejectNote}`
-            }
-          : d
-      )
-    );
-    setIsRejectModalOpen(false);
-    showToast(`Dokumen telah DITOLAK secara formal berdasarkan regulasi Dinsos.`, 'danger');
-    if (onReject) onReject(activeDoc, { reason: selectedObj, note: customRejectNote });
+      setDocList((prev) => prev.map((doc) =>
+        doc.id === activeDoc.id
+          ? { ...doc, status: 'ditolak', catatan_ai: `Dokumen ditolak: ${selectedObj?.label || 'alasan tidak ditentukan'}. Catatan: ${customRejectNote}` }
+          : doc
+      ));
+      setIsRejectModalOpen(false);
+      showToast('Keputusan penolakan berhasil disimpan.', 'danger');
+    } catch (err) {
+      showToast(err?.friendlyMessage || err?.message || 'Gagal menyimpan penolakan ke backend.', 'danger');
+    }
   };
 
   const handleReanalyzeAI = async () => {
-    const targetId = selectedApplicant?.rawId || selectedApplicant?.id;
-    if (targetId && !isNaN(parseInt(targetId, 10))) {
-      try {
-        showToast('Memanggil endpoint analisis AI internal backend...', 'info');
-        await adopsiService.reanalyzeAdoptionAI(parseInt(targetId, 10));
-        showToast('Analisis ulang model AI selesai! Data ekstraksi terverifikasi.', 'success');
-      } catch (err) {
-        showToast(err.friendlyMessage || 'Model AI Single-Agent berhasil memverifikasi berkas.', 'success');
+    try {
+      const targetId = getSelectedApplicationId();
+      if (onReanalyzeAI) {
+        setIsLocalReanalyzing(true);
+        const response = await onReanalyzeAI();
+        if (response?.hasil_ekstraksi_ai !== undefined) {
+          setReanalyzedResult(response.hasil_ekstraksi_ai);
+        }
+        showToast('Respons analisis ulang berhasil diterima dari backend.', 'success');
+      } else if (targetId) {
+        setIsLocalReanalyzing(true);
+        const response = await adopsiService.reanalyzeAdoptionAI(targetId);
+        setReanalyzedResult(response?.hasil_ekstraksi_ai ?? null);
+        showToast('Analisis ulang selesai dan hasil AI dimuat.', 'success');
+      } else {
+        throw new Error('Pilih pengajuan dari backend sebelum menjalankan analisis AI.');
       }
-    } else {
-      showToast('Model AI OCR telah memverifikasi ulang field dokumen.', 'info');
+    } catch (err) {
+      showToast(err?.friendlyMessage || err?.message || 'Analisis ulang AI gagal. Periksa log backend.', 'danger');
+    } finally {
+      setIsLocalReanalyzing(false);
     }
   };
 
@@ -376,16 +491,19 @@ export default function AdminDocumentReview({
   };
 
   const fields = getFieldsToCompare();
-  const isPendingManual = activeDoc.status === 'menunggu_tinjauan_manual';
-  const isApproved = activeDoc.status === 'diverifikasi';
-  const isRejected = activeDoc.status === 'ditolak';
+  const effectiveStatus = selectedApplicant?.rawId
+    ? String(selectedApplicant.rawStatus || '').toLowerCase()
+    : activeDoc.status;
+  const isPendingManual = effectiveStatus === 'menunggu_tinjauan_manual';
+  const isApproved = effectiveStatus === 'diverifikasi';
+  const isRejected = effectiveStatus === 'ditolak';
 
   if (!isCurrentlyOpen && isModal) return null;
 
   const dialogContent = (
     <div
       className={`bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden relative w-full ${
-        isModal ? 'max-w-7xl max-h-[92vh] h-[880px]' : 'h-full rounded-2xl'
+        isModal ? 'max-w-7xl max-h-[92vh] h-[880px]' : 'h-[78vh] min-h-[560px] rounded-2xl'
       }`}
       onClick={(e) => isModal && e.stopPropagation()}
     >
@@ -416,36 +534,50 @@ export default function AdminDocumentReview({
             </div>
           </div>
 
-          {/* Document Switcher Badges */}
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-            {docList.map((doc) => {
-              const isSelected = doc.id === activeDoc.id;
-              const isDocManual = doc.status === 'menunggu_tinjauan_manual';
-              const isDocOk = doc.status === 'diverifikasi';
-
-              return (
+          {/* Untuk pengajuan nyata, daftar tombol berasal dari dokumen yang tersimpan di database. */}
+          {selectedApplicant?.rawId ? (
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              {actualDocuments.map((doc) => (
                 <button
-                  key={doc.id}
+                  key={doc.key}
                   type="button"
-                  onClick={() => handleSelectDoc(doc.id)}
+                  onClick={() => setSelectedActualDocKey(doc.key)}
                   className={`text-xs px-2.5 sm:px-3 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5 sm:gap-2 border ${
-                    isSelected
+                    selectedActualDoc?.key === doc.key
                       ? 'bg-white text-blue-950 font-bold shadow-md border-white ring-2 ring-cyan-400'
                       : 'bg-white/10 text-white/90 hover:bg-white/20 border-white/15'
                   }`}
                 >
-                  <FileText size={14} className={isSelected ? 'text-blue-700' : 'text-cyan-300'} />
-                  <span className="truncate max-w-[120px] sm:max-w-[140px]">{doc.nama_dokumen}</span>
-                  {isDocOk && (
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-emerald-950" title="Diverifikasi" />
-                  )}
-                  {isDocManual && (
-                    <span className="w-2 h-2 rounded-full bg-amber-400 ring-2 ring-amber-950" title="Perlu Review" />
-                  )}
+                  <FileText size={14} className={selectedActualDoc?.key === doc.key ? 'text-blue-700' : 'text-cyan-300'} />
+                  <span>{doc.label}</span>
                 </button>
-              );
-            })}
-          </div>
+              ))}
+              {actualDocuments.length === 0 && <span className="text-[11px] text-blue-100">Tidak ada path dokumen pada record ini.</span>}
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              {docList.map((doc) => {
+                const isSelected = doc.id === activeDoc.id;
+                const isDocManual = doc.status === 'menunggu_tinjauan_manual';
+                const isDocOk = doc.status === 'diverifikasi';
+                return (
+                  <button
+                    key={doc.id}
+                    type="button"
+                    onClick={() => handleSelectDoc(doc.id)}
+                    className={`text-xs px-2.5 sm:px-3 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5 sm:gap-2 border ${
+                      isSelected ? 'bg-white text-blue-950 font-bold shadow-md border-white ring-2 ring-cyan-400' : 'bg-white/10 text-white/90 hover:bg-white/20 border-white/15'
+                    }`}
+                  >
+                    <FileText size={14} className={isSelected ? 'text-blue-700' : 'text-cyan-300'} />
+                    <span className="truncate max-w-[120px] sm:max-w-[140px]">{doc.nama_dokumen}</span>
+                    {isDocOk && <span className="w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-emerald-950" title="Diverifikasi" />}
+                    {isDocManual && <span className="w-2 h-2 rounded-full bg-amber-400 ring-2 ring-amber-950" title="Perlu Review" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Prominent Close Button (X) at Top Right Corner */}
@@ -465,18 +597,26 @@ export default function AdminDocumentReview({
         <div className="mt-4 pt-3 border-t border-white/10 flex flex-wrap items-center justify-between text-xs text-blue-100 gap-3">
           <div className="flex flex-wrap items-center gap-3">
             <span className="bg-white/10 px-2.5 py-1 rounded-md font-mono text-cyan-200">
-              ID: {activeDoc.id}
+              ID: {selectedApplicant?.rawId ? `PENGAJUAN-${selectedApplicant.rawId}` : activeDoc.id}
             </span>
-            <span className="text-blue-200/90">Kategori: <strong>{activeDoc.kategori}</strong></span>
-            <span>Diunggah: {activeDoc.tanggal_unggah}</span>
-            <span>Ukuran: {activeDoc.ukuran_file}</span>
+            <span className="text-blue-200/90">Kategori: <strong>{selectedApplicant?.rawId ? (selectedActualDoc?.label || 'Dokumen COTA') : activeDoc.kategori}</strong></span>
+            <span>{selectedApplicant?.rawId ? 'Sumber: Backend/MySQL' : `Diunggah: ${activeDoc.tanggal_unggah}`}</span>
+            <span>{selectedApplicant?.rawId ? `Berkas: ${selectedActualDoc?.path?.split(/[\\/]/).pop() || '-'}` : `Ukuran: ${activeDoc.ukuran_file}`}</span>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-blue-200">Confidence OCR:</span>
+            <span className="text-blue-200">{selectedApplicant?.rawId ? 'Keterbacaan OCR:' : 'Confidence OCR:'}</span>
             <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold bg-white/10 text-white border border-white/20">
               <Sparkles size={12} className={activeDoc.skor_confidence >= 85 ? 'text-emerald-400' : 'text-amber-400'} />
-              <span>{activeDoc.skor_confidence}%</span>
+              <span>{selectedApplicant?.rawId
+                ? (() => {
+                    if (!liveAiResult) return '—';
+                    const explicit = liveAiResult.confidence ?? liveAiResult.confidence_score;
+                    if (explicit != null) return explicit;
+                    const pct = summarizeAiResult(liveAiResult).percent;
+                    return pct == null ? '—' : `${pct}%`;
+                  })()
+                : `${activeDoc.skor_confidence}%`}</span>
             </div>
 
             {/* Status Pill */}
@@ -507,6 +647,8 @@ export default function AdminDocumentReview({
               ? 'bg-emerald-600 text-white'
               : toastMessage.type === 'warning'
               ? 'bg-amber-500 text-slate-900'
+              : toastMessage.type === 'info'
+              ? 'bg-blue-600 text-white'
               : 'bg-rose-600 text-white'
           }`}
         >
@@ -576,7 +718,8 @@ export default function AdminDocumentReview({
             </div>
           </div>
 
-          {/* Toggle Bounding Boxes */}
+          {/* Bounding box controls are only for the illustrative sample canvas. */}
+          {!selectedApplicant?.rawId && (
           <div className="shrink-0 px-4 py-2 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between text-[11px]">
             <span className="text-slate-400">Visualisasi Bounding Box AI OCR:</span>
             <label className="flex items-center gap-2 cursor-pointer">
@@ -591,31 +734,101 @@ export default function AdminDocumentReview({
               </span>
             </label>
           </div>
+          )}
 
-          {/* Document Canvas Stage */}
+          {/* Document Canvas Stage: real applicants load the protected backend file; only the demo uses a generated sample canvas. */}
           <div className="flex-1 min-h-0 overflow-auto p-4 sm:p-6 flex items-center justify-center bg-slate-950/50">
-            <DocumentCanvasPreview
-              previewType={activeDoc.preview_type}
-              scale={zoomScale}
-              rotation={rotation}
-              showBoundingBoxes={showBoundingBoxes}
-              documentData={{
-                ...activeDoc,
-                hasil_ekstraksi_ai: currentExtraction
-              }}
-            />
+            {selectedApplicant?.rawId ? (
+              <div className="w-full min-h-[320px] flex flex-col items-center justify-center gap-3 text-center">
+                {actualPreview.loading ? (
+                  <div className="text-sm text-cyan-100 flex items-center gap-2"><RefreshCw size={18} className="animate-spin" /> Memuat berkas asli dari backend...</div>
+                ) : actualPreview.url ? (
+                  actualPreview.mime.includes('pdf') || selectedActualDoc?.path?.toLowerCase().endsWith('.pdf') ? (
+                    <iframe title={selectedActualDoc?.label || 'Dokumen COTA'} src={actualPreview.url} className="w-full h-[68vh] min-h-[420px] rounded-lg bg-white" />
+                  ) : actualPreview.mime.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(selectedActualDoc?.path || '') ? (
+                    <img
+                      src={actualPreview.url}
+                      alt={selectedActualDoc?.label || 'Dokumen COTA'}
+                      style={{ transform: `scale(${zoomScale}) rotate(${rotation}deg)`, transformOrigin: 'center center', maxWidth: '100%', maxHeight: '68vh', objectFit: 'contain' }}
+                      className="rounded-lg shadow-2xl"
+                    />
+                  ) : (
+                    <a href={actualPreview.url} target="_blank" rel="noreferrer" className="rounded-lg bg-white px-4 py-3 font-bold text-blue-800">Buka / unduh dokumen</a>
+                  )
+                ) : (
+                  <div className="max-w-lg rounded-xl border border-slate-700 bg-slate-900 p-5 text-sm text-slate-200">
+                    <FileText size={30} className="mx-auto mb-3 text-cyan-300" />
+                    <p className="font-bold text-white">Pratinjau berkas asli belum tersedia</p>
+                    <p className="mt-2 text-xs leading-relaxed text-slate-300">{actualPreview.error || 'Pilih dokumen dari daftar atas atau periksa apakah path file tersimpan pada pengajuan.'}</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <DocumentCanvasPreview
+                previewType={activeDoc.preview_type}
+                scale={zoomScale}
+                rotation={rotation}
+                showBoundingBoxes={showBoundingBoxes}
+                documentData={{ ...activeDoc, hasil_ekstraksi_ai: currentExtraction }}
+              />
+            )}
           </div>
 
           {/* Footer Canvas: File Tip */}
           <div className="shrink-0 p-3 bg-slate-950 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
-            <span>Resolusi Asli: 2400 x 1500 px • 300 DPI</span>
-            <span className="text-cyan-400 font-mono">Tersertifikasi AI Guard Dinsos</span>
+            {selectedApplicant?.rawId ? (
+              <>
+                <span className="truncate" title={selectedActualDoc?.path || ''}>{selectedActualDoc?.path || 'Belum ada berkas dipilih'}</span>
+                <span className="text-cyan-400 font-mono shrink-0 ml-3">{actualPreview.mime || (actualPreview.loading ? 'memuat…' : '—')}</span>
+              </>
+            ) : (
+              <>
+                <span>Resolusi Asli: 2400 x 1500 px • 300 DPI</span>
+                <span className="text-cyan-400 font-mono">Tersertifikasi AI Guard Dinsos</span>
+              </>
+            )}
           </div>
         </div>
 
         {/* ================= SISI KANAN: PANEL EKSTRAKSI & HUMAN-IN-THE-LOOP (7 COLS) ================= */}
         <div className="lg:col-span-7 flex flex-col bg-white overflow-hidden">
-          
+
+          {/* Hasil AI resmi dari MySQL/backend, ditampilkan terbaca (bukan JSON mentah). */}
+          {selectedApplicant?.rawId ? (
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 bg-white">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                    <Bot size={17} className="text-indigo-700" /> Hasil Analisis AI
+                  </h3>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Pengajuan database #{selectedApplicant.rawId} • {selectedApplicant.applicant || 'Pemohon'}
+                  </p>
+                </div>
+                <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold border ${liveAiResult ? 'bg-emerald-100 border-emerald-200 text-emerald-800' : 'bg-amber-100 border-amber-200 text-amber-800'}`}>
+                  {liveAiResult ? 'HASIL AI TERSEDIA' : 'BELUM ADA HASIL AI'}
+                </span>
+              </div>
+
+              {liveAiResult && (liveAiResult.documents || liveAiResult.anomalies || liveAiResult.agent) ? (
+                <CotaAiResultPanel
+                  result={liveAiResult}
+                  selectedDocumentKey={selectedActualDoc?.key}
+                  onSelectDocument={setSelectedActualDocKey}
+                />
+              ) : liveAiResult ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+                  <strong>Format hasil AI tidak dikenali.</strong> Tekan “Analisis Ulang AI” untuk membuat ulang hasilnya.
+                  <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-white p-2 text-[10px] text-slate-700">{JSON.stringify(liveAiResult, null, 2)}</pre>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+                  Belum ada hasil AI untuk pengajuan ini. Tekan “Analisis Ulang AI” setelah memastikan berkas tersimpan dan dapat dibaca backend.
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
           {/* Alert Header if Manual Review Needed */}
           {isPendingManual && (
             <div className="shrink-0 bg-amber-50 border-b border-amber-200 p-4">
@@ -815,11 +1028,14 @@ export default function AdminDocumentReview({
             )}
           </div>
 
+            </>
+          )}
+
           {/* ================= ACTION VERIFICATION BAR (BOTTOM) ================= */}
           <div className="shrink-0 p-4 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="text-xs text-slate-500 w-full sm:w-auto">
               <span>Status Keputusan: </span>
-              <strong className="text-slate-800 uppercase">{activeDoc.status.replace(/_/g, ' ')}</strong>
+              <strong className="text-slate-800 uppercase">{String(selectedApplicant?.rawId ? (selectedApplicant.rawStatus || selectedApplicant.status) : activeDoc.status || 'tidak diketahui').replace(/_/g, ' ')}</strong>
             </div>
 
             {/* Verification Action Buttons */}
@@ -827,17 +1043,18 @@ export default function AdminDocumentReview({
               {/* Button: Analisis Ulang AI */}
               <button
                 onClick={handleReanalyzeAI}
-                title="Picu ulang ekstraksi model Single-Agent AI dari berkas"
-                className="text-xs px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 shadow-sm transition"
+                disabled={isAnalyzingAI || isLocalReanalyzing || isSavingDecision}
+                title="Picu ulang analisis AI pada backend"
+                className="text-xs px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-60 disabled:cursor-not-allowed text-slate-700 border border-slate-300 shadow-sm transition"
               >
                 <Bot size={15} className="text-blue-600" />
-                <span>Analisis Ulang AI</span>
+                <span>{(isAnalyzingAI || isLocalReanalyzing) ? 'Menganalisis...' : 'Analisis Ulang AI'}</span>
               </button>
 
               {/* Button: Tolak Pengajuan */}
               <button
                 onClick={() => setIsRejectModalOpen(true)}
-                disabled={isRejected}
+                disabled={isRejected || isSavingDecision}
                 className={`text-xs px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 transition ${
                   isRejected
                     ? 'bg-rose-100 text-rose-400 cursor-not-allowed'
@@ -851,7 +1068,8 @@ export default function AdminDocumentReview({
               {/* Button: Minta Unggah Ulang / Tambahan */}
               <button
                 onClick={() => setIsReuploadModalOpen(true)}
-                className="text-xs px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-sm transition"
+                disabled={isSavingDecision}
+                className="text-xs px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 disabled:cursor-not-allowed text-slate-950 shadow-sm transition"
               >
                 <RefreshCw size={14} />
                 <span>Minta Unggah Ulang</span>
@@ -860,7 +1078,7 @@ export default function AdminDocumentReview({
               {/* Button: Setujui Dokumen */}
               <button
                 onClick={handleApproveDocument}
-                disabled={isApproved}
+                disabled={isApproved || isSavingDecision}
                 className={`text-xs px-4 py-2 rounded-xl font-bold flex items-center gap-1.5 transition shadow-sm ${
                   isApproved
                     ? 'bg-emerald-200 text-emerald-800 cursor-not-allowed'

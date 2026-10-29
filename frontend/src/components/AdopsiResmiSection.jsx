@@ -23,7 +23,7 @@ export default function AdopsiResmiSection({ onOpenAdopsi }) {
   const isEligible = quickUsia >= 30 && quickUsia <= 55 && quickNikah >= 5;
 
   return (
-    <section 
+    <section
       id="adopsi-resmi-section"
       style={{
         background: 'linear-gradient(180deg, #ffffff 0%, #f0f7ff 100%)',
@@ -45,7 +45,7 @@ export default function AdopsiResmiSection({ onOpenAdopsi }) {
       }}></div>
 
       <div className="container">
-        
+
         {/* Section Header */}
         <div style={{ textAlign: 'center', maxWidth: '780px', margin: '0 auto 3rem auto' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: '#eff6ff', border: '1px solid #bfdbfe', padding: '0.35rem 0.85rem', borderRadius: '50px', marginBottom: '0.85rem' }}>
@@ -136,7 +136,7 @@ export default function AdopsiResmiSection({ onOpenAdopsi }) {
               </div>
             </div>
 
-            <button 
+            <button
               onClick={onOpenAdopsi}
               style={{
                 marginTop: '1.5rem',
@@ -208,7 +208,7 @@ export default function AdopsiResmiSection({ onOpenAdopsi }) {
               </div>
             </div>
 
-            <button 
+            <button
               onClick={onOpenAdopsi}
               style={{
                 marginTop: '1.5rem',
@@ -280,7 +280,7 @@ export default function AdopsiResmiSection({ onOpenAdopsi }) {
               </div>
             </div>
 
-            <button 
+            <button
               onClick={onOpenAdopsi}
               style={{
                 marginTop: '1.5rem',
@@ -342,7 +342,7 @@ export default function AdopsiResmiSection({ onOpenAdopsi }) {
               >
                 <UserCheck size={18} /> Buka Formulir COTA Resmi
               </button>
-              
+
               <button
                 onClick={onOpenAdopsi}
                 style={{
@@ -384,8 +384,8 @@ export default function AdopsiResmiSection({ onOpenAdopsi }) {
                 <label style={{ fontSize: '0.75rem', color: '#bfdbfe', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
                   Usia Pemohon (Thn):
                 </label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   value={quickUsia}
                   onChange={(e) => setQuickUsia(Number(e.target.value))}
                   style={{ width: '100%', padding: '0.5rem 0.65rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.3)', background: '#ffffff', color: '#0b1f5c', fontWeight: 700, fontSize: '0.85rem' }}
@@ -396,8 +396,8 @@ export default function AdopsiResmiSection({ onOpenAdopsi }) {
                 <label style={{ fontSize: '0.75rem', color: '#bfdbfe', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
                   Lama Menikah (Thn):
                 </label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   value={quickNikah}
                   onChange={(e) => setQuickNikah(Number(e.target.value))}
                   style={{ width: '100%', padding: '0.5rem 0.65rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.3)', background: '#ffffff', color: '#0b1f5c', fontWeight: 700, fontSize: '0.85rem' }}
@@ -416,11 +416,11 @@ export default function AdopsiResmiSection({ onOpenAdopsi }) {
               justifyContent: 'space-between'
             }}>
               <span>
-                {isEligible 
-                  ? '🟢 Memenuhi Kriteria Syarat Usia &amp; Pernikahan!' 
+                {isEligible
+                  ? '🟢 Memenuhi Kriteria Syarat Usia & lama Pernikahan!'
                   : '🔴 Belum Memenuhi Kriteria Usia/Menikah'}
               </span>
-              <button 
+              <button
                 onClick={onOpenAdopsi}
                 style={{ background: '#ffffff', color: '#0b1f5c', border: 'none', padding: '0.25rem 0.6rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer' }}
               >

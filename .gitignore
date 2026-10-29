@@ -147,3 +147,41 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# ==============================
+# Python / FastAPI Backend
+# ==============================
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Test and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Type checker and linter cache
+.mypy_cache/
+.ruff_cache/
+
+# Local storage cache
+backend/.storage_cache/
+
+# Private uploaded documents and payment proofs
+backend/storage/ktp/
+backend/storage/kk/
+backend/storage/dokumen_pendukung/
+backend/storage/bukti_transfer/
+backend/storage/identitas_relawan/

@@ -590,28 +590,30 @@ export default function LoginModal({
                       </button>
 
                       {/* Tombol Daftar Akun Baru (Dinamis Sesuai Peran Aktif) */}
-                      <div className="text-center pt-2">
-                        <span className="text-xs text-slate-500">
-                          {selectedRole === 'pengelola panti'
-                            ? 'Belum memiliki akun pengelola panti? '
-                            : selectedRole === 'admin'
-                            ? 'Belum memiliki akun petugas Dinsos? '
-                            : 'Belum memiliki akun warga? '}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setIsRegisterMode(true);
-                              setLoginEmailError(null);
-                              setLoginPasswordError(null);
-                              setLoginSuccessNotice(null);
-                              setRegError(null);
-                            }}
-                            className="text-blue-600 hover:text-blue-800 font-bold underline transition"
-                          >
-                            Daftar Akun Baru
-                          </button>
-                        </span>
-                      </div>
+                     {/* Registrasi hanya tersedia untuk Warga dan Admin Panti */}
+{selectedRole !== 'admin' && (
+  <div className="text-center pt-2">
+    <span className="text-xs text-slate-500">
+      {selectedRole === 'pengelola panti'
+        ? 'Belum memiliki akun pengelola panti? '
+        : 'Belum memiliki akun warga? '}
+
+      <button
+        type="button"
+        onClick={() => {
+          setIsRegisterMode(true);
+          setLoginEmailError(null);
+          setLoginPasswordError(null);
+          setLoginSuccessNotice(null);
+          setRegError(null);
+        }}
+        className="text-blue-600 hover:text-blue-800 font-bold underline transition"
+      >
+        Daftar Akun Baru
+      </button>
+    </span>
+  </div>
+)}
                     </form>
                   ) : (
                     /* ================= FORM REGISTRASI (DAFTAR AKUN BARU) ================= */
@@ -636,7 +638,6 @@ export default function LoginModal({
                         >
                           <option value="masyarakat">Masyarakat / Warga Umum</option>
                           <option value="pengelola panti">Pengelola Panti Asuhan / LKSA</option>
-                          <option value="admin">Dinas Sosial (Super Admin)</option>
                         </select>
                       </div>
 

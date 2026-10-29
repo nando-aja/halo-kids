@@ -22,28 +22,41 @@ import AdopsiModal from './components/Modals/AdopsiModal';
 import MapModal from './components/Modals/MapModal';
 import AiAssistant from './components/AiAssistant';
 
+// AI Assistant hanya untuk Admin / Super Admin (bukan Admin Panti).
+// Peran backend menjadi sumber utama. roleMode tidak boleh memberi akses,
+// karena ia bisa berasal dari pilihan tampilan/demo yang lama.
+const getAuthenticatedRole = (user) => {
+  const value = user?.peran || user?.roleCode || user?.role || '';
+  return String(value).trim().toLowerCase().replace(/[_\s]+/g, '-');
+};
+
+const canUseAdminDashboard = (user) => {
+  const role = getAuthenticatedRole(user);
+  return [
+    'admin', 'super-admin', 'superadmin', 'admin-dinsos',
+    'dinas-sosial-(super-admin)', 'dinas-sosial-super-admin',
+    'admin-panti', 'admin-lksa', 'pengelola-panti', 'pengelola-lksa', 'pantiadmin'
+  ].includes(role);
+};
+
+const canUseAdminAI = (user) => {
+  const role = getAuthenticatedRole(user);
+  // AI administrasi hanya untuk akun Dinsos, bukan pengelola LKSA atau warga.
+  return [
+    'admin', 'super-admin', 'superadmin', 'admin-dinsos',
+    'dinas-sosial-(super-admin)', 'dinas-sosial-super-admin'
+  ].includes(role);
+};
+
 export default function App() {
-  // Requirement 1: Default to 'landing' (Beranda) or dashboard if saved session is admin
+  // Saat aplikasi dibuka ulang, arahkan berdasarkan role akun yang tersimpan.
+  // Super Admin / Admin LKSA masuk Workspace; User Publik masuk Portal Warga.
   const [viewMode, setViewMode] = useState(() => {
     try {
       const sess = localStorage.getItem('halokids_active_session');
-      if (sess) {
-        const user = JSON.parse(sess);
-        const r = (user.role || user.peran || user.roleCode || user.roleMode || '').toLowerCase();
-        if (
-          r === 'admin panti' || 
-          r === 'super admin' || 
-          r === 'admin' || 
-          r === 'superadmin' || 
-          r === 'pengelola-panti' || 
-          r === 'pengelola panti' || 
-          r === 'pantiadmin'
-        ) {
-          return 'dashboard';
-        }
-      }
+      if (sess && canUseAdminDashboard(JSON.parse(sess))) return 'dashboard';
     } catch {
-      // ignore
+      // Abaikan sesi yang tidak valid dan tampilkan portal publik.
     }
     return 'landing';
   });
@@ -157,8 +170,9 @@ export default function App() {
       console.error(e);
     }
 
-    // Auto redirect based on role (masyarakat, pengelola panti, super admin -> dashboard sesuai mode):
-    setViewMode('dashboard');
+    // Workspace hanya untuk akun admin/pengelola panti; User Publik langsung ke portal warga.
+    setViewMode(canUseAdminDashboard(loggedUser) ? 'dashboard' : 'landing');
+    setActiveTab('beranda');
   };
 
   const handleLogout = () => {
@@ -193,7 +207,7 @@ export default function App() {
             onLogout={handleLogout}
             onToggleLoginDemo={handleToggleLoginDemo}
             onSwitchToLanding={() => { setViewMode('landing'); setActiveTab('beranda'); }}
-            onSwitchToDashboard={() => setViewMode('dashboard')}
+            onSwitchToDashboard={() => { if (canUseAdminDashboard(currentUser)) setViewMode('dashboard'); }}
             onSwitchToPanti={() => { setViewMode('panti'); setActiveTab('panti'); }}
             onSwitchToDonasi={() => { setViewMode('donasi'); setActiveTab('donasi'); }}
             onSwitchToAdopsi={() => { setViewMode('adopsi'); setActiveTab('adopsi'); }}
@@ -256,7 +270,7 @@ export default function App() {
             onSwitchToPanti={() => { setViewMode('panti'); setActiveTab('panti'); }}
             onSwitchToDonasi={() => { setViewMode('donasi'); setActiveTab('donasi'); }}
             onSwitchToAdopsi={() => { setViewMode('adopsi'); setActiveTab('adopsi'); }}
-            onSwitchToDashboard={() => setViewMode('dashboard')}
+            onSwitchToDashboard={() => { if (canUseAdminDashboard(currentUser)) setViewMode('dashboard'); }}
             onOpenHotline={() => setIsHotlineOpen(true)}
             onOpenLogin={() => setIsLoginOpen(true)}
             onOpenAdopsi={() => setIsAdopsiOpen(true)}
@@ -274,7 +288,7 @@ export default function App() {
               currentUser={currentUser}
               onLogout={handleLogout}
               onToggleLoginDemo={handleToggleLoginDemo}
-              onSwitchToDashboard={() => setViewMode('dashboard')}
+              onSwitchToDashboard={() => { if (canUseAdminDashboard(currentUser)) setViewMode('dashboard'); }}
               onSwitchToPengaduan={() => { setViewMode('pengaduan'); setActiveTab('pengaduan'); }}
               onSwitchToPanti={() => { setViewMode('panti'); setActiveTab('panti'); }}
               onSwitchToDonasi={() => { setViewMode('donasi'); setActiveTab('donasi'); }}
@@ -298,7 +312,7 @@ export default function App() {
             onLogout={handleLogout}
             onToggleLoginDemo={handleToggleLoginDemo}
             onSwitchToLanding={() => { setViewMode('landing'); setActiveTab('beranda'); }}
-            onSwitchToDashboard={() => setViewMode('dashboard')}
+            onSwitchToDashboard={() => { if (canUseAdminDashboard(currentUser)) setViewMode('dashboard'); }}
             onSwitchToPengaduan={() => { setViewMode('pengaduan'); setActiveTab('pengaduan'); }}
             onSwitchToPanti={() => { setViewMode('panti'); setActiveTab('panti'); }}
             onSwitchToDonasi={() => { setViewMode('donasi'); setActiveTab('donasi'); }}
@@ -316,7 +330,7 @@ export default function App() {
             currentUser={currentUser}
             onLogout={handleLogout}
             onToggleLoginDemo={handleToggleLoginDemo}
-            onSwitchToDashboard={() => setViewMode('dashboard')}
+            onSwitchToDashboard={() => { if (canUseAdminDashboard(currentUser)) setViewMode('dashboard'); }}
             onSwitchToPengaduan={() => { setViewMode('pengaduan'); setActiveTab('pengaduan'); }}
             onSwitchToPanti={() => { setViewMode('panti'); setActiveTab('panti'); }}
             onSwitchToDonasi={() => { setViewMode('donasi'); setActiveTab('donasi'); }}
@@ -340,14 +354,10 @@ export default function App() {
     <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
       
       {/* Dynamic View Router */}
-      {viewMode === 'dashboard' ? (
+      {viewMode === 'dashboard' && canUseAdminDashboard(currentUser) ? (
         <DashboardUtama 
           currentUser={currentUser}
           onLogout={handleLogout}
-          onSwitchToLanding={() => {
-            setViewMode('landing');
-            setActiveTab('beranda');
-          }}
           volunteerList={volunteerRegistrations}
           setVolunteerList={setVolunteerRegistrations}
         />
@@ -366,7 +376,7 @@ export default function App() {
             onSwitchToPanti={() => { setViewMode('panti'); setActiveTab('panti'); }}
             onSwitchToDonasi={() => { setViewMode('donasi'); setActiveTab('donasi'); }}
             onSwitchToAdopsi={() => { setViewMode('adopsi'); setActiveTab('adopsi'); }}
-            onSwitchToDashboard={() => setViewMode('dashboard')}
+            onSwitchToDashboard={() => { if (canUseAdminDashboard(currentUser)) setViewMode('dashboard'); }}
             onOpenLapor={() => { setViewMode('pengaduan'); setActiveTab('pengaduan'); }}
             onOpenHotline={() => setIsHotlineOpen(true)}
             onOpenLogin={() => setIsLoginOpen(true)}
@@ -382,6 +392,8 @@ export default function App() {
             activeTab={activeTab}
             viewMode={viewMode}
             onNavigate={(newMode, newTab) => {
+              // Workspace tidak boleh dibuka hanya melalui navigasi UI.
+              if (newMode === 'dashboard' && !canUseAdminDashboard(currentUser)) return;
               setViewMode(newMode);
               setActiveTab(newTab);
             }}
@@ -399,10 +411,12 @@ export default function App() {
             activeTab={activeTab}
             viewMode={viewMode}
             onNavigate={(newMode, newTab) => {
+              // Workspace tidak boleh dibuka hanya melalui navigasi UI.
+              if (newMode === 'dashboard' && !canUseAdminDashboard(currentUser)) return;
               setViewMode(newMode);
               setActiveTab(newTab);
             }}
-            onSwitchToDashboard={() => setViewMode('dashboard')}
+            onSwitchToDashboard={() => { if (canUseAdminDashboard(currentUser)) setViewMode('dashboard'); }}
             onOpenLacak={() => setIsLacakOpen(true)}
             onOpenLogin={() => setIsLoginOpen(true)}
             onLogout={handleLogout}
@@ -421,14 +435,18 @@ export default function App() {
               currentUser={currentUser}
               onOpenLogin={() => setIsLoginOpen(true)}
               onOpenLacak={() => setIsLacakOpen(true)}
-              onSwitchToDashboard={() => setViewMode('dashboard')}
+              onSwitchToDashboard={() => { if (canUseAdminDashboard(currentUser)) setViewMode('dashboard'); }}
               onNavigateTab={(tab) => {
                 if (tab === 'dashboard') {
-                  setViewMode('dashboard');
-                } else {
-                  setViewMode(tab === 'beranda' ? 'landing' : tab);
-                  setActiveTab(tab);
+                  if (canUseAdminDashboard(currentUser)) {
+                    setViewMode('dashboard');
+                    setActiveTab('beranda');
+                  }
+                  return;
                 }
+
+                setViewMode(tab === 'beranda' ? 'landing' : tab);
+                setActiveTab(tab);
               }}
             />
 
@@ -442,6 +460,8 @@ export default function App() {
               activeTab={activeTab}
               viewMode={viewMode}
               onNavigate={(newMode, newTab) => {
+                // User Publik tidak dapat berpindah ke mode Workspace lewat navigasi.
+                if (newMode === 'dashboard' && !canUseAdminDashboard(currentUser)) return;
                 setViewMode(newMode);
                 setActiveTab(newTab);
               }}
@@ -492,13 +512,15 @@ export default function App() {
         onClose={() => setIsMapOpen(false)}
       />
 
-      {/* Floating Single-Agent AI Assistant & Verification Hub */}
-      <AiAssistant 
-        isLoggedIn={isLoggedIn}
-        currentUser={currentUser}
-        onOpenAdopsi={() => setIsAdopsiOpen(true)}
-        onOpenLapor={() => setIsLaporOpen(true)}
-      />
+      {/* AI Assistant & Verification Hub: khusus Admin / Super Admin */}
+      {isLoggedIn && canUseAdminAI(currentUser) && (
+        <AiAssistant
+          isLoggedIn={isLoggedIn}
+          currentUser={currentUser}
+          onOpenAdopsi={() => setIsAdopsiOpen(true)}
+          onOpenLapor={() => setIsLaporOpen(true)}
+        />
+      )}
 
     </div>
   );

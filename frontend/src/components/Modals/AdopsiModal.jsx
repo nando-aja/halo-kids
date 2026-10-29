@@ -25,6 +25,54 @@ import {
 import confetti from 'canvas-confetti';
 import { adopsiService } from '../../api';
 
+// Berkas COTA bertipe: tiap jenis dokumen diunggah ke backend (Supabase) dan path aslinya
+// dikirim ke pengajuan. Sebelumnya form mengirim path contoh (ktp_sample.jpg) tanpa unggahan.
+const REQUIRED_DOC_SLOTS = [
+  ['ktp', 'KTP Pemohon (Suami/Istri)'],
+  ['kk', 'Kartu Keluarga (KK)'],
+  ['akta_kelahiran', 'Akta Kelahiran'],
+  ['buku_nikah', 'Buku / Akta Nikah'],
+  ['skck', 'SKCK Kepolisian'],
+  ['surat_sehat', 'Surat Keterangan Sehat (Jasmani, Jiwa & Bebas Narkoba)'],
+];
+
+const OPTIONAL_DOC_SLOTS = [
+  ['surat_penghasilan', 'Surat Penghasilan / Slip Gaji'],
+  ['surat_kesehatan_jiwa', 'Surat Kesehatan Jiwa'],
+  ['pernyataan_resmi', 'Surat Pernyataan Resmi'],
+];
+
+function UploadSlot({ label, file, required, onPick, onClear }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.5rem 0.75rem' }}>
+      <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0b1f5c' }}>
+        {label}{required && <span style={{ color: '#dc2626' }}> *</span>}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+        {file ? (
+          <>
+            <span title={file.name} style={{ fontSize: '0.75rem', color: '#334155', maxWidth: '190px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              📄 {file.name}
+            </span>
+            <span style={{ background: '#dbeafe', color: '#1d4ed8', fontSize: '0.7rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
+              Siap diunggah
+            </span>
+            <button type="button" onClick={onClear} style={{ background: 'transparent', border: 'none', color: '#dc2626', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}>
+              Hapus
+            </button>
+          </>
+        ) : (
+          <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Belum dipilih</span>
+        )}
+        <label style={{ background: '#1d4ed8', color: '#ffffff', padding: '0.3rem 0.7rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}>
+          {file ? 'Ganti' : '+ Pilih File'}
+          <input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={onPick} style={{ display: 'none' }} />
+        </label>
+      </div>
+    </div>
+  );
+}
+
 export default function AdopsiModal({ isOpen, onClose }) {
   if (!isOpen) return null;
 
@@ -60,30 +108,30 @@ export default function AdopsiModal({ isOpen, onClose }) {
     penghasilan: 'Rp 10.000.000 - Rp 20.000.000',
     alamat: '',
     kecamatan: 'Kec. Cibinong',
-    pantiTujuan: 'Panti Balita Tunas Bangsa'
+    pantiTujuan: 'Panti Balita Tunas Bangsa',
+    tanggalLahirSuami: '',
+    tanggalPernikahan: ''
   });
 
-  // 5 Document Categories Upload State
+  // File asli per jenis dokumen (dikirim ke backend saat submit)
+  const [docFiles, setDocFiles] = useState({});
+  const [submitError, setSubmitError] = useState('');
+
+  // Dokumen harus kosong saat formulir pertama kali dibuka
   const [uploadedDocs, setUploadedDocs] = useState({
-    identitas: [
-      { name: 'KTP_Suami_Istri_Scan.pdf', status: 'Verifikasi AI OCR Valid', confidence: '99.2%' },
-      { name: 'Kartu_Keluarga_Legalisir.pdf', status: 'Verifikasi AI OCR Valid', confidence: '98.7%' }
-    ],
-    medis: [
-      { name: 'Surat_Kesehatan_Jiwa_RSUD.pdf', status: 'Dokumen RS Pemerintah Valid', confidence: '100%' }
-    ],
-    finansial: [
-      { name: 'SKCK_Polres_Kabupaten.pdf', status: 'SKCK Aktif', confidence: '99.0%' }
-    ],
+    identitas: [],
+    medis: [],
+    finansial: [],
     pernyataan: [],
     tambahan: []
   });
 
+  // AI belum memproses dokumen apa pun
   const [aiStatus, setAiStatus] = useState({
     processing: false,
-    extractedName: 'Bpk. Hendra & Ibu Siska',
-    ocrConfidence: '99.4%',
-    statusMessage: 'AI Agent OCR: Berkas KTP/KK Terbaca Sempurna & Cocok dengan Database Dukcapil/MySQL'
+    extractedName: '',
+    ocrConfidence: null,
+    statusMessage: 'Belum ada dokumen yang diunggah.'
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -133,95 +181,170 @@ export default function AdopsiModal({ isOpen, onClose }) {
 
   const handleFileUpload = async (categoryKey, event) => {
     const files = Array.from(event.target.files || []);
-    if (files.length > 0) {
-      setAiStatus(prev => ({ ...prev, processing: true }));
 
-      // Coba upload ke endpoint OCR AI backend FastAPI jika kategori identitas
-      let backendOcrResult = null;
-      if (categoryKey === 'identitas') {
-        try {
-          const ktpFile = files[0];
-          const kkFile = files[1] || null;
-          backendOcrResult = await adopsiService.uploadKtpDanKk(ktpFile, kkFile);
-        } catch (apiErr) {
-          console.warn('Backend OCR upload fallback to local simulation:', apiErr);
-        }
+    if (files.length === 0) return;
+
+    // Validasi file sebelum ditambahkan ke daftar
+    const allowedTypes = [
+      'application/pdf',
+      'image/jpeg',
+      'image/png'
+    ];
+
+    const validFiles = files.filter((file) => {
+      const validType = allowedTypes.includes(file.type);
+      const validSize = file.size <= 10 * 1024 * 1024;
+
+      if (!validType || !validSize) {
+        alert(
+          `${file.name}: format harus PDF/JPG/PNG dan ukuran maksimal 10 MB.`
+        );
+        return false;
       }
 
-      setTimeout(() => {
-        const newDocList = files.map(f => ({
-          name: f.name,
-          status: 'Verifikasi AI OCR Valid',
-          confidence: backendOcrResult?.ai_preview?.confidence 
-            ? `${(backendOcrResult.ai_preview.confidence * 100).toFixed(1)}%` 
-            : (95 + Math.random() * 4.9).toFixed(1) + '%'
-        }));
-        setUploadedDocs(prev => ({
-          ...prev,
-          [categoryKey]: [...prev[categoryKey], ...newDocList]
-        }));
-        setAiStatus({
-          processing: false,
-          extractedName: backendOcrResult?.ai_preview?.nik_ktp 
-            ? `NIK: ${backendOcrResult.ai_preview.nik_ktp} (${formData.namaSuami || 'Pemohon'})`
-            : (formData.namaSuami ? `Bpk. ${formData.namaSuami} & Ibu ${formData.namaIstri}` : 'Pemohon COTA Terverifikasi'),
-          ocrConfidence: backendOcrResult?.ai_preview?.confidence 
-            ? `${(backendOcrResult.ai_preview.confidence * 100).toFixed(1)}%` 
-            : '99.1%',
-          statusMessage: backendOcrResult 
-            ? `AI Agent OCR Backend: Berkas ${files[0].name} berhasil diekstrak dan tersimpan di storage FastAPI.`
-            : `AI Agent OCR: Berkas ${files[0].name} berhasil diekstrak ke Pydantic JSON schema tanpa error.`
-        });
-      }, 800);
+      return true;
+    });
+
+    if (validFiles.length === 0) {
+      event.target.value = '';
+      return;
     }
+
+    // Tampilkan status unggahan, bukan klaim sudah terverifikasi
+    const newDocs = validFiles.map((file) => ({
+      name: file.name,
+      status: 'Menunggu verifikasi',
+      confidence: null
+    }));
+
+    setUploadedDocs((prev) => ({
+      ...prev,
+      [categoryKey]: [...prev[categoryKey], ...newDocs]
+    }));
+
+    setAiStatus({
+      processing: false,
+      extractedName: '',
+      ocrConfidence: null,
+      statusMessage:
+        'Dokumen berhasil dipilih. Hasil verifikasi AI belum tersedia.'
+    });
+
+    // Reset agar file yang sama dapat dipilih kembali
+    event.target.value = '';
+  };
+
+  const handleSlotFile = (key, event) => {
+    const file = (event.target.files || [])[0];
+    event.target.value = '';
+    if (!file) return;
+
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    const validType = ['application/pdf', 'image/jpeg', 'image/png'].includes(file.type) || ['pdf', 'jpg', 'jpeg', 'png'].includes(ext);
+    if (!validType || file.size > 10 * 1024 * 1024) {
+      alert(`${file.name}: format harus PDF/JPG/PNG dan ukuran maksimal 10 MB.`);
+      return;
+    }
+
+    const next = { ...docFiles, [key]: file };
+    setDocFiles(next);
+    setSubmitError('');
+    const ready = REQUIRED_DOC_SLOTS.filter(([k]) => next[k]).length;
+    setAiStatus({
+      processing: false,
+      extractedName: '',
+      ocrConfidence: null,
+      statusMessage: `${ready} dari ${REQUIRED_DOC_SLOTS.length} berkas wajib sudah dipilih. AI membaca berkas setelah pengajuan dikirim.`
+    });
+  };
+
+  const clearSlotFile = (key) => {
+    setDocFiles((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   };
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
+    setSubmitError('');
+
     if (!formData.namaSuami || !formData.namaIstri || !formData.noWa) {
       alert('Mohon lengkapi Nama Suami, Nama Istri, dan Nomor WhatsApp aktif!');
+      return;
+    }
+    if (!formData.tanggalLahirSuami || !formData.tanggalPernikahan) {
+      setSubmitError('Isi tanggal lahir suami dan tanggal pernikahan sesuai KTP / buku nikah.');
+      return;
+    }
+    const missing = REQUIRED_DOC_SLOTS.filter(([key]) => !docFiles[key]).map(([, label]) => label);
+    if (missing.length > 0) {
+      setSubmitError(`Berkas wajib belum dipilih: ${missing.join(', ')}.`);
       return;
     }
 
     setIsSubmitting(true);
 
-    let generatedTicket = 'PIPA-2024-' + Math.floor(10000 + Math.random() * 90000);
+    let generatedTicket = '';
 
     try {
-      // Hubungkan ke endpoint POST /api/masyarakat/pengajuan-adopsi
-      const birthYear = new Date().getFullYear() - (parseInt(formData.usiaSuami || '35', 10) || 35);
-      const marriageYear = new Date().getFullYear() - (lamaMenikah || 6);
+      // 1) Unggah berkas asli ke backend (Supabase Storage) dan ambil path-nya
+      const ktpKk = await adopsiService.uploadKtpDanKk(docFiles.ktp, docFiles.kk);
+      if (!ktpKk?.dokumen_ktp || !ktpKk?.dokumen_kk) {
+        throw new Error('Server tidak mengembalikan path KTP/KK. Berkas belum tersimpan.');
+      }
 
+      const awal = await adopsiService.uploadDokumenAwal({
+        aktaKelahiran: docFiles.akta_kelahiran,
+        bukuNikah: docFiles.buku_nikah,
+        skck: docFiles.skck,
+        suratSehat: docFiles.surat_sehat
+      });
+      const dokumenPendukung = { ...(awal?.dokumen_pendukung || {}) };
+
+      for (const [key] of OPTIONAL_DOC_SLOTS) {
+        if (docFiles[key]) {
+          const extra = await adopsiService.uploadDokumenTambahan(key, docFiles[key]);
+          if (extra?.file) dokumenPendukung[key] = extra.file;
+        }
+      }
+
+      // 2) Kirim pengajuan dengan path berkas yang benar-benar ada
       const payload = {
-        nik_pemohon: formData.nikSuami || '3201010000000001',
+        nik_pemohon: formData.nikSuami,
         nama_pemohon: `${formData.namaSuami} & ${formData.namaIstri}`,
-        tanggal_lahir_pemohon: `${birthYear}-06-15`,
-        tanggal_pernikahan: `${marriageYear}-08-20`,
+        tanggal_lahir_pemohon: formData.tanggalLahirSuami,
+        tanggal_pernikahan: formData.tanggalPernikahan,
         nomor_kontak: formData.noWa,
         alamat: `${formData.alamat}, ${formData.kecamatan}`,
         panti_id: 1,
         status_pernikahan: 'menikah',
         lama_menikah_tahun: lamaMenikah,
-        penghasilan_bulanan: 15000000,
         alasan_adopsi: `Permohonan resmi pengangkatan anak melalui HaloKids Dinsos untuk ${formData.pantiTujuan}`,
-        dokumen_ktp: 'storage/ktp/ktp_sample.jpg',
-        dokumen_kk: 'storage/kk/kk_sample.jpg',
-        dokumen_pendukung: {
-          akta_kelahiran: 'storage/dokumen_pendukung/akta_kelahiran_default.pdf',
-          buku_nikah: 'storage/dokumen_pendukung/buku_nikah_default.pdf',
-          skck: 'storage/dokumen_pendukung/skck_default.pdf',
-          surat_sehat: 'storage/dokumen_pendukung/surat_sehat_default.pdf'
-        }
+        dokumen_ktp: ktpKk.dokumen_ktp,
+        dokumen_kk: ktpKk.dokumen_kk,
+        dokumen_pendukung: dokumenPendukung
       };
       const apiRes = await adopsiService.submitAdopsi(payload);
-      if (apiRes?.id) {
-        generatedTicket = `PIPA-2024-${String(apiRes.id).padStart(3, '0')}`;
+      if (!apiRes?.id) {
+        throw new Error('Server tidak mengembalikan nomor pengajuan.');
       }
+      generatedTicket = `PIPA-2024-${apiRes.id}`;
+
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('halokids:data_updated', { detail: { type: 'adopsi' } }));
       }
     } catch (apiErr) {
-      console.warn('Backend COTA submit fallback to demo generated ticket:', apiErr);
+      // Jangan pura-pura sukses: tampilkan penyebab sebenarnya kepada pemohon.
+      const eligibilityErrors = apiErr?.response?.data?.detail?.eligibility?.errors;
+      setSubmitError(
+        Array.isArray(eligibilityErrors) && eligibilityErrors.length > 0
+          ? `Belum memenuhi syarat awal: ${eligibilityErrors.join(' ')}`
+          : apiErr?.friendlyMessage || apiErr?.message || 'Pengajuan gagal dikirim. Coba lagi.'
+      );
+      setIsSubmitting(false);
+      return;
     }
 
     setIsSubmitting(false);
@@ -234,7 +357,7 @@ export default function AdopsiModal({ isOpen, onClose }) {
         spread: 80,
         origin: { y: 0.5 }
       });
-    } catch (err) {}
+    } catch (err) { }
 
     // Auto update tracking view to show newly created ticket
     setActiveTrackingResult({
@@ -302,9 +425,9 @@ export default function AdopsiModal({ isOpen, onClose }) {
       justifyContent: 'center',
       padding: '1rem'
     }}>
-      <div 
-        className="modal-container" 
-        onClick={(e) => e.stopPropagation()} 
+      <div
+        className="modal-container"
+        onClick={(e) => e.stopPropagation()}
         style={{
           background: '#ffffff',
           borderRadius: '20px',
@@ -361,7 +484,7 @@ export default function AdopsiModal({ isOpen, onClose }) {
             </div>
           </div>
 
-          <button 
+          <button
             onClick={onClose}
             style={{
               background: 'rgba(255,255,255,0.2)',
@@ -515,7 +638,7 @@ export default function AdopsiModal({ isOpen, onClose }) {
           {/* =================================================================== */}
           {activeTab === 'panduan' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              
+
               {/* Box Info Banner */}
               <div style={{
                 background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
@@ -584,7 +707,7 @@ export default function AdopsiModal({ isOpen, onClose }) {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                   {tahapanAdopsiList.map((item) => (
-                    <div 
+                    <div
                       key={item.step}
                       style={{
                         display: 'flex',
@@ -645,7 +768,7 @@ export default function AdopsiModal({ isOpen, onClose }) {
               </div>
 
               <div style={{ display: 'flex', gap: '1rem' }}>
-                <button 
+                <button
                   onClick={() => setActiveTab('kelayakan')}
                   className="btn btn-primary"
                   style={{ flex: 1, padding: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 700 }}
@@ -662,7 +785,7 @@ export default function AdopsiModal({ isOpen, onClose }) {
           {/* =================================================================== */}
           {activeTab === 'kelayakan' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              
+
               <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '1.5rem' }}>
                 <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0b1f5c', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <Sparkles size={20} color="#d97706" /> Filter Kelayakan Otomatis Syarat Hukum COTA
@@ -672,15 +795,15 @@ export default function AdopsiModal({ isOpen, onClose }) {
                 </p>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.25rem' }}>
-                  
+
                   {/* Field 1: Usia Pemohon */}
                   <div>
                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
                       Usia Pemohon Termuda (Suami/Istri):
                     </label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <input 
-                        type="number" 
+                      <input
+                        type="number"
                         value={usiamin}
                         onChange={(e) => setUsiamin(Number(e.target.value))}
                         style={{
@@ -703,8 +826,8 @@ export default function AdopsiModal({ isOpen, onClose }) {
                       Lama Pernikahan Sah Hukum:
                     </label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <input 
-                        type="number" 
+                      <input
+                        type="number"
                         value={lamaMenikah}
                         onChange={(e) => setLamaMenikah(Number(e.target.value))}
                         style={{
@@ -726,8 +849,8 @@ export default function AdopsiModal({ isOpen, onClose }) {
                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
                       Jumlah Anak Kandung/Angkat Saat Ini:
                     </label>
-                    <input 
-                      type="number" 
+                    <input
+                      type="number"
                       value={jumlahAnak}
                       onChange={(e) => setJumlahAnak(Number(e.target.value))}
                       style={{
@@ -785,19 +908,19 @@ export default function AdopsiModal({ isOpen, onClose }) {
 
                   <div>
                     <h5 style={{ fontSize: '1rem', fontWeight: 800, color: isOverallEligible ? '#15803d' : '#b91c1c', margin: 0 }}>
-                      {isOverallEligible 
-                        ? '🟢 LOLOS FILTER KELAYAKAN AWAL COTA (Dapat Melanjutkan Pendaftaran)' 
+                      {isOverallEligible
+                        ? '🟢 LOLOS FILTER KELAYAKAN AWAL COTA (Dapat Melanjutkan Pendaftaran)'
                         : '🔴 BELUM MEMENUHI KELAYAKAN HUKUM AWAL COTA'}
                     </h5>
-                    
+
                     <p style={{ fontSize: '0.85rem', color: isOverallEligible ? '#166534' : '#991b1b', margin: '4px 0 0 0', lineHeight: 1.4 }}>
-                      {isOverallEligible 
+                      {isOverallEligible
                         ? 'Kriteria usia pemohon, durasi pernikahan, serta kesepakatan tertulis telah sesuai dengan syarat Peraturan Menteri Sosial RI. Silakan isi Formulir Pengajuan COTA Resmi.'
-                        : 'Terdapat kriteria yang belum sesuai: ' + 
-                          (!isUsiaValid ? 'Usia wajib 30-55 thn; ' : '') + 
-                          (!isMenikahValid ? 'Usia pernikahan wajib minimal 5 thn; ' : '') + 
-                          (!isAnakValid ? 'Maksimal memiliki 1 anak; ' : '') +
-                          (adaPersetujuan !== 'ya' ? 'Memerlukan persetujuan tertulis suami/istri; ' : '')
+                        : 'Terdapat kriteria yang belum sesuai: ' +
+                        (!isUsiaValid ? 'Usia wajib 30-55 thn; ' : '') +
+                        (!isMenikahValid ? 'Usia pernikahan wajib minimal 5 thn; ' : '') +
+                        (!isAnakValid ? 'Maksimal memiliki 1 anak; ' : '') +
+                        (adaPersetujuan !== 'ya' ? 'Memerlukan persetujuan tertulis suami/istri; ' : '')
                       }
                     </p>
 
@@ -894,7 +1017,7 @@ export default function AdopsiModal({ isOpen, onClose }) {
               ) : (
                 /* Active Form */
                 <form onSubmit={handleFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                  
+
                   {/* Section 1: Data Profil COTA */}
                   <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '1.25rem' }}>
                     <h4 style={{ fontSize: '1rem', fontWeight: 800, color: '#0b1f5c', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -906,8 +1029,8 @@ export default function AdopsiModal({ isOpen, onClose }) {
                         <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
                           Nama Lengkap Suami: *
                         </label>
-                        <input 
-                          type="text" 
+                        <input
+                          type="text"
                           required
                           placeholder="Contoh: Budi Santoso"
                           value={formData.namaSuami}
@@ -920,8 +1043,8 @@ export default function AdopsiModal({ isOpen, onClose }) {
                         <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
                           Nama Lengkap Istri: *
                         </label>
-                        <input 
-                          type="text" 
+                        <input
+                          type="text"
                           required
                           placeholder="Contoh: Siti Rahmawati"
                           value={formData.namaIstri}
@@ -934,8 +1057,8 @@ export default function AdopsiModal({ isOpen, onClose }) {
                         <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
                           NIK KTP Suami:
                         </label>
-                        <input 
-                          type="text" 
+                        <input
+                          type="text"
                           placeholder="Contoh: 320101xxxxxxxxxx (16 digit)"
                           value={formData.nikSuami}
                           onChange={(e) => setFormData({ ...formData, nikSuami: e.target.value })}
@@ -945,10 +1068,36 @@ export default function AdopsiModal({ isOpen, onClose }) {
 
                       <div>
                         <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
+                          Tanggal Lahir Suami (sesuai KTP): *
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          value={formData.tanggalLahirSuami}
+                          onChange={(e) => setFormData({ ...formData, tanggalLahirSuami: e.target.value })}
+                          style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
+                          Tanggal Pernikahan (sesuai buku nikah): *
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          value={formData.tanggalPernikahan}
+                          onChange={(e) => setFormData({ ...formData, tanggalPernikahan: e.target.value })}
+                          style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
                           No. WhatsApp Aktif (Notifikasi Status): *
                         </label>
-                        <input 
-                          type="text" 
+                        <input
+                          type="text"
                           required
                           placeholder="Contoh: 081234567890"
                           value={formData.noWa}
@@ -994,109 +1143,73 @@ export default function AdopsiModal({ isOpen, onClose }) {
                     </div>
                   </div>
 
-                  {/* Section 2: Upload Berkas Dokumen Fisik (5 Categories) */}
+                  {/* Section 2: Upload Berkas Dokumen (per jenis, dikirim ke Supabase saat submit) */}
                   <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '1.25rem' }}>
                     <h4 style={{ fontSize: '1rem', fontWeight: 800, color: '#0b1f5c', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <Upload size={18} color="#1d4ed8" /> Bagian 2: Unggah Berkas Dokumen Persyaratan (5 Kategori Physical Docs)
+                      <Upload size={18} color="#1d4ed8" /> Bagian 2: Unggah Berkas Persyaratan
                     </h4>
                     <p style={{ fontSize: '0.8rem', color: '#64748b', margin: 0, marginBottom: '1rem' }}>
-                      Format yang didukung: PDF, JPG, PNG (Maks 10MB per berkas). Dokumen otomatis diproses oleh Single-Agent AI OCR.
+                      Format PDF, JPG, atau PNG (maks. 10 MB per berkas). Setiap jenis berkas dipilih satu per satu agar AI dan petugas Dinsos dapat memeriksanya dengan tepat.
                     </p>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                      
-                      {/* Cat 1: Identitas & Kependudukan */}
-                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '0.85rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0b1f5c' }}>
-                            1. Identitas &amp; Kependudukan (Scan KTP Suami/Istri, KK, Surat Nikah, Akta Lahir)
-                          </span>
-                          <label style={{ background: '#1d4ed8', color: '#ffffff', padding: '0.35rem 0.75rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
-                            + Unggah File
-                            <input type="file" multiple onChange={(e) => handleFileUpload('identitas', e)} style={{ display: 'none' }} />
-                          </label>
-                        </div>
-                        {uploadedDocs.identitas.map((doc, idx) => (
-                          <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem', color: '#334155', background: '#fff', padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '0.35rem' }}>
-                            <span>📄 {doc.name}</span>
-                            <span style={{ background: '#dcfce7', color: '#15803d', fontSize: '0.7rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
-                              {doc.status} ({doc.confidence})
-                            </span>
-                          </div>
-                        ))}
-                      </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {REQUIRED_DOC_SLOTS.map(([key, label]) => (
+                        <UploadSlot
+                          key={key}
+                          label={label}
+                          required
+                          file={docFiles[key]}
+                          onPick={(event) => handleSlotFile(key, event)}
+                          onClear={() => clearSlotFile(key)}
+                        />
+                      ))}
+                    </div>
 
-                      {/* Cat 2: Dokumen Medis */}
-                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '0.85rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0b1f5c' }}>
-                            2. Dokumen Medis RS Pemerintah (Surat Sehat Jasmani, Jiwa &amp; Bebas Narkoba)
-                          </span>
-                          <label style={{ background: '#1d4ed8', color: '#ffffff', padding: '0.35rem 0.75rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
-                            + Unggah File
-                            <input type="file" multiple onChange={(e) => handleFileUpload('medis', e)} style={{ display: 'none' }} />
-                          </label>
-                        </div>
-                        {uploadedDocs.medis.map((doc, idx) => (
-                          <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem', color: '#334155', background: '#fff', padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '0.35rem' }}>
-                            <span>🏥 {doc.name}</span>
-                            <span style={{ background: '#dcfce7', color: '#15803d', fontSize: '0.7rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
-                              {doc.status}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Cat 3: Finansial & Legalitas */}
-                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '0.85rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0b1f5c' }}>
-                            3. Finansial &amp; Legalitas (SK Penghasilan/Slip Gaji &amp; SKCK Kepolisian)
-                          </span>
-                          <label style={{ background: '#1d4ed8', color: '#ffffff', padding: '0.35rem 0.75rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>
-                            + Unggah File
-                            <input type="file" multiple onChange={(e) => handleFileUpload('finansial', e)} style={{ display: 'none' }} />
-                          </label>
-                        </div>
-                        {uploadedDocs.finansial.map((doc, idx) => (
-                          <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem', color: '#334155', background: '#fff', padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '0.35rem' }}>
-                            <span>💼 {doc.name}</span>
-                            <span style={{ background: '#dcfce7', color: '#15803d', fontSize: '0.7rem', fontWeight: 700, padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
-                              {doc.status}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-
+                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', margin: '1rem 0 0.4rem' }}>
+                      Berkas tambahan (opsional, bisa menyusul)
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {OPTIONAL_DOC_SLOTS.map(([key, label]) => (
+                        <UploadSlot
+                          key={key}
+                          label={label}
+                          file={docFiles[key]}
+                          onPick={(event) => handleSlotFile(key, event)}
+                          onClear={() => clearSlotFile(key)}
+                        />
+                      ))}
                     </div>
                   </div>
 
                   {/* AI Agentic Inspection Box (PRD Sec 5.3) */}
-                  <div style={{
-                    background: '#f0fdf4',
-                    border: '1px solid #bbf7d0',
-                    borderRadius: '12px',
-                    padding: '1rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.85rem'
-                  }}>
-                    <Bot size={28} color="#16a34a" style={{ flexShrink: 0 }} />
+                  <div
+                    style={{
+                      background: '#eff6ff',
+                      border: '1px solid #bfdbfe',
+                      borderRadius: '12px',
+                      padding: '1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.85rem'
+                    }}
+                  >
+                    <Bot size={28} color="#2563eb" />
+
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <strong style={{ fontSize: '0.85rem', color: '#15803d' }}>
-                          AI Agentic Architecture Active (OCR &amp; NLP Extraction)
-                        </strong>
-                        <span style={{ background: '#15803d', color: '#fff', fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '4px', fontWeight: 700 }}>
-                          Akurasi {aiStatus.ocrConfidence}
-                        </span>
-                      </div>
-                      <p style={{ fontSize: '0.8rem', color: '#166534', margin: '2px 0 0 0' }}>
+                      <strong style={{ color: '#1d4ed8', fontSize: '0.85rem' }}>
+                        Status Verifikasi Dokumen
+                      </strong>
+
+                      <p style={{ color: '#1e40af', fontSize: '0.8rem', marginBottom: 0 }}>
                         {aiStatus.statusMessage}
                       </p>
                     </div>
                   </div>
-
+                  {submitError && (
+                    <div role="alert" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: '10px', padding: '0.75rem 1rem', fontSize: '0.82rem', fontWeight: 600 }}>
+                      {submitError}
+                    </div>
+                  )}
                   {/* Submit Button */}
                   <button
                     type="submit"
@@ -1121,7 +1234,7 @@ export default function AdopsiModal({ isOpen, onClose }) {
           {/* =================================================================== */}
           {activeTab === 'lacak' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              
+
               {/* Search Form */}
               <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '1.25rem' }}>
                 <h4 style={{ fontSize: '1rem', fontWeight: 800, color: '#0b1f5c', marginBottom: '0.75rem' }}>
@@ -1129,8 +1242,8 @@ export default function AdopsiModal({ isOpen, onClose }) {
                 </h4>
 
                 <form onSubmit={handleSearchTicket} style={{ display: 'flex', gap: '0.75rem' }}>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={searchTicketCode}
                     onChange={(e) => setSearchTicketCode(e.target.value)}
                     placeholder="Contoh: PIPA-2024-012"
@@ -1144,13 +1257,13 @@ export default function AdopsiModal({ isOpen, onClose }) {
                 {/* Sample Preset Buttons */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.85rem' }}>
                   <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700 }}>Contoh Tiket Demo:</span>
-                  <button 
+                  <button
                     onClick={() => { setSearchTicketCode('PIPA-2024-012'); setActiveTrackingResult(sampleTickets['PIPA-2024-012']); }}
                     style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 700 }}
                   >
                     PIPA-2024-012 (Verifikasi PIPA)
                   </button>
-                  <button 
+                  <button
                     onClick={() => { setSearchTicketCode('PIPA-2024-009'); setActiveTrackingResult(sampleTickets['PIPA-2024-009']); }}
                     style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 700 }}
                   >
@@ -1162,7 +1275,7 @@ export default function AdopsiModal({ isOpen, onClose }) {
               {/* Status Tracking Pipeline Result Card */}
               {activeTrackingResult && (
                 <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '1.5rem' }}>
-                  
+
                   {/* Card Header */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem', marginBottom: '1.25rem' }}>
                     <div>

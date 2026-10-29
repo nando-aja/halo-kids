@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { X, ShieldAlert, CheckCircle2, Lock, Upload, ArrowRight, ArrowLeft, Ticket } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import pengaduanService from '../../api/pengaduanService';
+import pengaduanService, { createReportSubmissionKey } from '../../api/pengaduanService';
 
 export default function LaporModal({ isOpen, onClose }) {
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const submitLock = useRef(false);
+  const submissionKey = useRef(createReportSubmissionKey());
   const [formData, setFormData] = useState({
     jenisKejadian: 'Kekerasan Fisik / Verbal',
     lokasi: '',
@@ -22,42 +25,59 @@ export default function LaporModal({ isOpen, onClose }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitLock.current || isSubmitting || submittedTicket) return;
+    submitLock.current = true;
     setIsSubmitting(true);
+    setSubmitError('');
     try {
       const combined = `[Kategori]: ${formData.jenisKejadian} | [Lokasi]: ${formData.lokasi} | [Tanggal]: ${formData.tanggal} | [Pelapor]: ${formData.isAnonymous ? 'Anonim' : `${formData.namaPelapor} (${formData.kontak})`} | [Kronologi]: ${formData.deskripsi}`;
       const res = await pengaduanService.createPengaduan({
         isi_laporan: combined,
-        jenis_laporan: formData.jenisKejadian
+        jenis_laporan: formData.jenisKejadian,
+        submission_key: submissionKey.current,
+        files: formData.berkas ? [formData.berkas] : [],
       });
+      if (!res?.kode_tiket) {
+        throw new Error('Server belum mengonfirmasi penyimpanan laporan. Kode tiket tidak diterima.');
+      }
       setSubmittedTicket(res.kode_tiket);
+      setStep(4);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('halokids:data_updated', { detail: { type: 'pengaduan' } }));
       }
-    } catch {
-      const newTicket = 'HK-' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + '-' + Math.floor(100000 + Math.random() * 900000);
-      setSubmittedTicket(newTicket);
-    } finally {
-      setIsSubmitting(false);
-      setStep(4);
       try {
-        confetti({
-          particleCount: 80,
-          spread: 70,
-          origin: { y: 0.6 }
-        });
+        confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
       } catch (err) {}
+    } catch (err) {
+      console.error('Pengiriman pengaduan gagal:', err);
+      setSubmitError(err?.friendlyMessage || err?.message || 'Pengiriman gagal. Laporan belum dikonfirmasi tersimpan.');
+    } finally {
+      submitLock.current = false;
+      setIsSubmitting(false);
     }
   };
 
   const handleReset = () => {
     setStep(1);
     setSubmittedTicket(null);
+    setSubmitError('');
+    setFormData({
+      jenisKejadian: 'Kekerasan Fisik / Verbal',
+      lokasi: '',
+      tanggal: '',
+      deskripsi: '',
+      isAnonymous: true,
+      namaPelapor: '',
+      kontak: '',
+      berkas: null
+    });
+    submissionKey.current = createReportSubmissionKey();
     onClose();
   };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-container" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '620px' }}>
+        <div className="modal-container" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '620px' }}>
         
         {/* Modal Header */}
         <div style={{
@@ -200,10 +220,41 @@ export default function LaporModal({ isOpen, onClose }) {
 
               <div style={{ border: '2px dashed #cbd5e1', borderRadius: 'var(--radius-md)', padding: '1rem', textAlign: 'center', background: '#f8fafc' }}>
                 <Upload size={24} color="#64748b" style={{ marginBottom: '0.35rem' }} />
-                <span style={{ fontSize: '0.8rem', color: '#475569', display: 'block', fontWeight: 600 }}>
-                  Unggah Bukti Foto / Dokumen (Opsional)
+                <label htmlFor="lapor-modal-evidence" style={{ fontSize: '0.8rem', color: '#1d4ed8', display: 'block', fontWeight: 700, cursor: 'pointer' }}>
+                  {formData.berkas ? formData.berkas.name : 'Pilih foto atau dokumen bukti (opsional)'}
+                </label>
+                <input
+                  id="lapor-modal-evidence"
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] || null;
+                    const allowed = file && (
+                      ['image/jpeg', 'image/png', 'application/pdf'].includes(file.type) ||
+                      /\.(jpe?g|png|pdf)$/i.test(file.name)
+                    );
+                    if (file && !allowed) {
+                      setSubmitError('Format lampiran harus JPG, PNG, atau PDF.');
+                      setFormData((prev) => ({ ...prev, berkas: null }));
+                    } else if (file && file.size > 10 * 1024 * 1024) {
+                      setSubmitError('Ukuran lampiran maksimal 10 MB.');
+                      setFormData((prev) => ({ ...prev, berkas: null }));
+                    } else {
+                      setSubmitError('');
+                      setFormData((prev) => ({ ...prev, berkas: file }));
+                    }
+                    event.target.value = '';
+                  }}
+                  style={{ display: 'none' }}
+                />
+                <span style={{ fontSize: '0.7rem', color: '#64748b', display: 'block', marginTop: '0.35rem' }}>
+                  JPG, PNG, atau PDF maksimal 10 MB. File akan diunggah ke Supabase privat saat laporan dikirim.
                 </span>
-                <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Format: JPG, PNG, PDF (Maks. 5MB)</span>
+                {formData.berkas && (
+                  <button type="button" onClick={() => setFormData((prev) => ({ ...prev, berkas: null }))} style={{ marginTop: '0.4rem', border: 'none', background: 'transparent', color: '#b91c1c', cursor: 'pointer', fontSize: '0.75rem' }}>
+                    Hapus lampiran
+                  </button>
+                )}
               </div>
 
               <div style={{ display: 'flex', gap: '0.75rem' }}>
@@ -224,6 +275,11 @@ export default function LaporModal({ isOpen, onClose }) {
 
           {step === 3 && (
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {submitError && (
+                <div role="alert" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: '10px', padding: '0.75rem 0.9rem', fontSize: '0.85rem' }}>
+                  <strong>Belum terkirim:</strong> {submitError}
+                </div>
+              )}
               <div style={{
                 background: '#eff6ff',
                 border: '1px solid #bfdbfe',
@@ -282,8 +338,8 @@ export default function LaporModal({ isOpen, onClose }) {
                 <button type="button" onClick={() => setStep(2)} className="btn btn-secondary" style={{ flex: 1 }}>
                   <ArrowLeft size={16} /> Kembali
                 </button>
-                <button type="submit" className="btn btn-emergency" style={{ flex: 1.2 }}>
-                  <ShieldAlert size={16} /> Kirim Pengaduan Sekarang
+                <button type="submit" disabled={isSubmitting} className="btn btn-emergency" style={{ flex: 1.2, opacity: isSubmitting ? 0.65 : 1, cursor: isSubmitting ? 'wait' : 'pointer' }}>
+                  <ShieldAlert size={16} /> {isSubmitting ? 'Mengirim laporan...' : 'Kirim Pengaduan Sekarang'}
                 </button>
               </div>
             </form>

@@ -47,14 +47,40 @@ import {
 export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUser, volunteerList, setVolunteerList }) {
   const getRoleMode = (u) => {
     if (!u) return 'user';
-    const r = (u.role || u.peran || u.roleCode || u.roleMode || '').toLowerCase();
-    if (r === 'super admin' || r === 'admin' || r === 'superadmin') return 'superadmin';
-    if (r === 'admin panti' || r === 'pengelola-panti' || r === 'pengelola panti' || r === 'pantiadmin') return 'pantiadmin';
+
+    // Samakan prioritas pembacaan role dengan App.jsx.
+    // Jangan gunakan roleMode karena dapat berasal dari mode demo/tampilan lama.
+    // The backend's canonical role takes precedence over UI/demo aliases.
+    // Do not infer access from roleMode or manually selected display state.
+    const rawRole = u.peran || u.role || u.roleCode || '';
+    const role = String(rawRole).trim().toLowerCase().replace(/[_\s]+/g, '-');
+
+    if ([
+      'admin',
+      'super-admin',
+      'superadmin',
+      'admin-dinsos',
+      'dinas-sosial-(super-admin)',
+      'dinas-sosial-super-admin'
+    ].includes(role)) {
+      return 'superadmin';
+    }
+
+    if ([
+      'admin-panti',
+      'admin-lksa',
+      'pengelola-panti',
+      'pengelola-lksa',
+      'pantiadmin'
+    ].includes(role)) {
+      return 'pantiadmin';
+    }
+
     return 'user';
   };
 
-  // Current Active Dashboard Mode: 'user' | 'pantiadmin' | 'superadmin'
-  const [dashboardRoleMode, setDashboardRoleMode] = useState(() => getRoleMode(currentUser));
+  // Role mode is derived from the authenticated account; it is not user-switchable.
+  const dashboardRoleMode = getRoleMode(currentUser);
 
   // Active Menu Tab for User Publik
   const [userTab, setUserTab] = useState('adopsi'); // 'adopsi' | 'pengaduan' | 'donasi' | 'panti'
@@ -181,17 +207,22 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
   ]);
 
   // 2. Master Data Anak & Validasi Adopsi PIPA (Super Admin Req #2)
-  const [adopsiApplications, setAdopsiApplications] = useState([
-    { id: 'PIPA-2024-012', applicant: 'Bpk. Hendra & Ibu Siska', targetChild: 'Ahmad Faiz (3 Thn)', originPanti: 'Panti Balita Tunas Bangsa', score: 'Lolos Survey Ekonomi & Psikologis', status: 'Verifikasi Sidang PIPA Dinsos', docs: ['KTP/KK', 'SKCK', 'Surat Medis', 'Rekomendasi Panti'] },
-    { id: 'PIPA-2024-009', applicant: 'Bpk. Dr. Ridwan & Ibu Elena', targetChild: 'Siti Nurhaliza (6 Thn)', originPanti: 'LKSA Kasih Bunda Mandiri', score: 'Verifikasi Berkas Lengkap', status: 'SK Pengangkatan Anak Terbit (Disetujui)', docs: ['KTP/KK', 'SKCK', 'BAP Kepolisian', 'Akte Lahir'] }
-  ]);
+  // Daftar COTA harus berasal dari backend; jangan tampilkan pemohon demo sebagai data nyata.
+  const [adopsiApplications, setAdopsiApplications] = useState([]);
 
   // 3. Control Pelaporan Anak Hilang & Eskalasi (Super Admin Req #3)
+  // Data contoh anak hilang untuk panel pencocokan panti (bukan daftar pengaduan sensitif).
   const [lostChildReports, setLostChildReports] = useState([
-    { id: 'HILANG-2024-099', childName: 'Rian (L, 8 Thn)', reporter: 'Ibu Pertiwi (Orang Tua)', location: 'Kec. Cibinong • Jl. Mayor Oking', date: 'Hari ini, 10:15 WIB', photo: '/lksa1.jpg', status: 'Eskalasi TRC & Kepolisian', officer: 'Tim TRC Alpha' },
-    { id: 'HILANG-2024-082', childName: 'Nayla (P, 5 Thn)', reporter: 'Warga Sukamaju', location: 'Kec. Ciawi', date: 'Kemarin', photo: '/lksa2.jpg', status: 'Dalam Investigasi Panti', officer: 'Petugas Ciawi' },
-    { id: 'HILANG-2024-071', childName: 'Dimas (L, 11 Thn)', reporter: 'Bpk. Wahyu', location: 'Kec. Parung', date: '02 Oct 2024', photo: '/lksa3.jpg', status: 'Ditemukan / Selesai', officer: 'Polsek Parung' }
+    { id: 'HILANG-DEMO-099', childName: 'Contoh kasus sintetis Rian (L, 8 Thn)', reporter: 'Pemeran sintetis', location: 'Kec. Cibinong', date: 'Data demo', photo: '/lksa1.jpg', status: 'Dalam simulasi', officer: 'Tim Demo' },
+    { id: 'HILANG-DEMO-082', childName: 'Contoh kasus sintetis Nayla (P, 5 Thn)', reporter: 'Pemeran sintetis', location: 'Kec. Ciawi', date: 'Data demo', photo: '/lksa2.jpg', status: 'Dalam simulasi', officer: 'Tim Demo' }
   ]);
+  // Pengaduan sensitif selalu berasal dari API admin dan dipisah dari data contoh panti.
+  const [complaintReports, setComplaintReports] = useState([]);
+  const [reportSyncStatus, setReportSyncStatus] = useState('loading');
+  const [reportAttachments, setReportAttachments] = useState({});
+  const [reportAttachmentsLoading, setReportAttachmentsLoading] = useState({});
+  const [reportAttachmentsErrors, setReportAttachmentsErrors] = useState({});
+  const [reportSyncError, setReportSyncError] = useState('');
 
   // 4. Audit Donasi Daerah & Pemetaan Kebutuhan (Super Admin Req #4)
   const regionalDonationAudit = [
@@ -250,12 +281,6 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
   const [adminDonations, setAdminDonations] = useState([]);
   const [pantiAdoptions, setPantiAdoptions] = useState([]);
   const [actionLoading, setActionLoading] = useState({});
-
-  useEffect(() => {
-    if (currentUser) {
-      setDashboardRoleMode(getRoleMode(currentUser));
-    }
-  }, [currentUser]);
 
   // ----------------------------------------------------
   // SINKRONISASI DATA DARI FASTAPI BACKEND
@@ -347,18 +372,43 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
           // 1. Ambil Antrean Adopsi COTA
           try {
             const rawAdoptions = await adopsiService.getAdminAdoptions();
-            if (isMounted && Array.isArray(rawAdoptions) && rawAdoptions.length > 0) {
-              setAdopsiApplications(rawAdoptions.map(a => ({
-                id: `PIPA-2024-${a.id}`,
-                rawId: a.id,
-                applicant: a.nama_pemohon,
-                targetChild: 'Calon Anak Binaan',
-                originPanti: 'LKSA Binaan Dinsos',
-                score: a.status === 'diverifikasi' ? 'Lolos Verifikasi PIPA' : 'Menunggu Sidang Berkas',
-                status: a.status === 'diverifikasi' ? 'SK Pengangkatan Anak Terbit (Disetujui)' : a.status === 'ditolak' ? 'Berkas Ditolak Sidang PIPA' : a.status === 'butuh_dokumen_tambahan' ? 'Menunggu Unggah Ulang Berkas' : 'Verifikasi Sidang PIPA Dinsos',
-                docs: ['KTP/KK', 'SKCK', 'Surat Medis'],
-                hasil_ekstraksi_ai: a.hasil_ekstraksi_ai
-              })));
+            if (isMounted && Array.isArray(rawAdoptions)) {
+              setAdopsiApplications(rawAdoptions.map((a) => {
+                const rawStatus = String(a.status || '').toLowerCase();
+                const statusLabels = {
+                  diverifikasi: 'SK Pengangkatan Anak Terbit (Disetujui)',
+                  ditolak: 'Berkas Ditolak Sidang PIPA',
+                  butuh_dokumen_tambahan: 'Menunggu Unggah Ulang Berkas',
+                  menunggu_tinjauan_manual: 'Menunggu Tinjauan Manual AI',
+                  diajukan: 'Pengajuan Diajukan',
+                };
+                const supporting = a.dokumen_pendukung;
+                const supportingNames = Array.isArray(supporting)
+                  ? supporting.map((value, index) => typeof value === 'string' ? value.split(/[\\/]/).pop() : `Dokumen tambahan ${index + 1}`)
+                  : Object.entries(supporting || {})
+                      .filter(([, value]) => Boolean(value))
+                      .map(([key]) => key.replace(/[_-]+/g, ' '));
+                const docs = [
+                  ...(a.dokumen_ktp ? ['KTP'] : []),
+                  ...(a.dokumen_kk ? ['KK'] : []),
+                  ...supportingNames,
+                ];
+                return {
+                  id: `PIPA-2024-${a.id}`,
+                  rawId: a.id,
+                  applicant: a.nama_pemohon || `Pemohon #${a.id}`,
+                  targetChild: 'Calon Anak Binaan',
+                  originPanti: 'LKSA Binaan Dinsos',
+                  score: a.hasil_ekstraksi_ai ? 'Hasil analisis AI tersedia' : 'Belum ada hasil analisis AI',
+                  rawStatus,
+                  status: statusLabels[rawStatus] || 'Verifikasi Sidang PIPA Dinsos',
+                  docs,
+                  dokumen_ktp: a.dokumen_ktp ?? null,
+                  dokumen_kk: a.dokumen_kk ?? null,
+                  dokumen_pendukung: a.dokumen_pendukung ?? null,
+                  hasil_ekstraksi_ai: a.hasil_ekstraksi_ai ?? null,
+                };
+              }));
             }
           } catch (aErr) {
             console.warn('Adoption admin sync fallback:', aErr);
@@ -392,44 +442,33 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
             console.warn('Volunteer admin sync fallback:', vErr);
           }
 
-          // 3. Ambil Seluruh Data Donasi Masuk (Audit Donasi Super Admin)
-          try {
-            const rawDonations = await donasiService.getAdminDonations();
-            if (isMounted && Array.isArray(rawDonations)) {
-              setAdminDonations(rawDonations.map(d => ({
-                id: `DNS-${d.id}`,
-                rawId: d.id,
-                date: d.tanggal_donasi ? new Date(d.tanggal_donasi).toLocaleDateString('id-ID') : 'Hari ini',
-                donor: d.id_user ? `Donatur #${d.id_user}` : 'Warga Anonim',
-                panti: d.panti_asuhan?.nama_panti || `LKSA Panti #${d.id_panti || 1}`,
-                jenis: d.jenis_donasi,
-                amount: d.jenis_donasi === 'uang' ? `Rp ${Number(d.jumlah_nominal).toLocaleString('id-ID')}` : `${d.nama_barang || 'Paket Logistik'} (${d.jumlah_barang || 1} ${d.satuan_barang || 'Paket'})`,
-                bukti_transfer: d.bukti_transfer,
-                status: d.status_verifikasi
-              })));
-            }
-          } catch (dErr) {
-            console.warn('Admin donations sync fallback:', dErr);
-          }
+          // Data audit donasi sudah disinkronkan pada blok di atas.
 
           // 4. Ambil Seluruh Pengaduan Masuk (Monitoring Kedaruratan)
           try {
             const rawReports = await pengaduanService.getAdminPengaduan();
-            if (isMounted && Array.isArray(rawReports) && rawReports.length > 0) {
-              setLostChildReports(rawReports.map(r => ({
+            if (isMounted && Array.isArray(rawReports)) {
+              setComplaintReports(rawReports.map(r => ({
                 id: r.kode_tiket || `HK-${r.id}`,
                 rawId: r.id,
                 childName: r.jenis_laporan || 'Laporan Pengaduan Anak',
                 reporter: r.id_user ? `Warga #${r.id_user}` : 'Pelapor Publik',
                 location: 'Wilayah Kabupaten',
-                date: r.tanggal_pengaduan ? new Date(r.tanggal_pengaduan).toLocaleDateString('id-ID') : 'Hari ini',
+                date: r.tanggal_lapor ? new Date(r.tanggal_lapor).toLocaleString('id-ID') : 'Waktu tidak tersedia',
                 status: r.status === 'selesai' ? 'Selesai / Ditangani' : r.status === 'diproses' ? 'Eskalasi TRC & Kepolisian' : 'Baru Masuk / Menunggu Tindakan',
                 officer: 'Tim Dinsos',
                 isi_laporan: r.isi_laporan
               })));
+              setReportSyncStatus('loaded');
+              setReportSyncError('');
             }
           } catch (rErr) {
             console.warn('Admin reports sync fallback:', rErr);
+            if (isMounted) {
+              setComplaintReports([]);
+              setReportSyncStatus('error');
+              setReportSyncError(rErr?.friendlyMessage || 'Gagal mengambil laporan dari backend. Periksa login Admin Dinsos dan koneksi API.');
+            }
           }
         }
       } catch (globalErr) {
@@ -449,6 +488,121 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
       window.removeEventListener('halokids:data_updated', handleDataUpdated);
     };
   }, [dashboardRoleMode, currentUser]);
+  // Memuat audit donasi hanya ketika menu Audit Donasi dibuka.
+  // Hook ini berada di tingkat teratas komponen, bukan di dalam fungsi async.
+  useEffect(() => {
+    if (
+      dashboardRoleMode !== 'superadmin' ||
+      superAdminTab !== 'audit_donasi'
+    ) {
+      return;
+    }
+
+    let active = true;
+
+    const syncAdminDonations = async () => {
+      try {
+        const rawDonations = await donasiService.getAdminDonations();
+        if (!active || !Array.isArray(rawDonations)) return;
+
+        setAdminDonations(rawDonations.map((d) => ({
+          id: `DNS-${d.id}`,
+          rawId: d.id,
+          date: d.tanggal_donasi
+            ? new Date(d.tanggal_donasi).toLocaleDateString('id-ID')
+            : 'Hari ini',
+          donor: d.id_user ? `Donatur #${d.id_user}` : 'Warga Anonim',
+          panti: d.panti_asuhan?.nama_panti || `LKSA Panti #${d.id_panti || 1}`,
+          jenis: d.jenis_donasi,
+          amount: d.jenis_donasi === 'uang'
+            ? `Rp ${Number(d.jumlah_nominal).toLocaleString('id-ID')}`
+            : `${d.nama_barang || 'Paket Logistik'} (${d.jumlah_barang || 1} ${d.satuan_barang || 'Paket'})`,
+          bukti_transfer: d.bukti_transfer,
+          status: d.status_verifikasi,
+        })));
+      } catch (err) {
+        if (active) {
+          console.error(
+            'Gagal memuat data audit donasi:',
+            err?.friendlyMessage || err?.message || err
+          );
+        }
+      }
+    };
+
+    syncAdminDonations();
+    return () => { active = false; };
+  }, [dashboardRoleMode, superAdminTab, currentUser]);
+
+  // Memuat laporan pengaduan ketika menu pengaduan dibuka.
+  useEffect(() => {
+    if (
+      dashboardRoleMode !== 'superadmin' ||
+      superAdminTab !== 'monitoring_hilang'
+    ) {
+      return;
+    }
+
+    let active = true;
+
+    const loadComplaintReports = async () => {
+      setReportSyncStatus('loading');
+      setReportSyncError('');
+
+      try {
+        const reports = await pengaduanService.getAdminPengaduan();
+
+        if (!active) return;
+
+        if (!Array.isArray(reports)) {
+          throw new Error('Format data laporan dari backend tidak valid.');
+        }
+
+        const mappedReports = reports.map((r) => ({
+          id: r.kode_tiket || `HK-${r.id}`,
+          rawId: r.id,
+          childName: r.jenis_laporan || 'Laporan Pengaduan Anak',
+          reporter: r.id_user
+            ? `Warga #${r.id_user}`
+            : 'Pelapor Publik',
+          location: 'Wilayah Kabupaten',
+          date: r.tanggal_lapor
+            ? new Date(r.tanggal_lapor).toLocaleString('id-ID')
+            : 'Waktu tidak tersedia',
+          status:
+            r.status === 'selesai'
+              ? 'Selesai / Ditangani'
+              : r.status === 'diproses'
+                ? 'Eskalasi TRC & Kepolisian'
+                : 'Baru Masuk / Menunggu Tindakan',
+          officer: 'Tim Dinsos',
+          isi_laporan: r.isi_laporan,
+        }));
+
+        setComplaintReports(mappedReports);
+        setReportSyncStatus('loaded');
+        setReportSyncError('');
+      } catch (err) {
+        if (!active) return;
+
+        console.error('Gagal memuat pengaduan:', err);
+
+        setReportSyncError(
+          err?.friendlyMessage ||
+          err?.message ||
+          'Gagal mengambil laporan dari backend.'
+        );
+
+        setReportSyncStatus('error');
+      }
+    };
+
+    loadComplaintReports();
+
+    return () => {
+      active = false;
+    };
+  }, [dashboardRoleMode, superAdminTab]);
 
   const handleTrackUserTicket = async (e) => {
     e?.preventDefault();
@@ -467,6 +621,106 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
     }
   };
 
+  const handleLoadReportAttachments = async (report) => {
+    const reportId = report?.rawId;
+    if (!reportId) {
+      showToast('ID laporan tidak tersedia untuk mengambil lampiran.');
+      return;
+    }
+
+    setReportAttachmentsLoading((prev) => ({ ...prev, [reportId]: true }));
+    setReportAttachmentsErrors((prev) => ({ ...prev, [reportId]: '' }));
+    try {
+      const response = await pengaduanService.getAdminReportAttachments(reportId);
+      const attachments = Array.isArray(response?.lampiran) ? response.lampiran : [];
+      setReportAttachments((prev) => ({ ...prev, [reportId]: attachments }));
+      if (!attachments.length) {
+        showToast('Tidak ada lampiran tersimpan untuk tiket ini.');
+      }
+    } catch (err) {
+      const message = err?.friendlyMessage || err?.message || 'Lampiran gagal dimuat.';
+      setReportAttachmentsErrors((prev) => ({ ...prev, [reportId]: message }));
+      showToast(message);
+    } finally {
+      setReportAttachmentsLoading((prev) => ({ ...prev, [reportId]: false }));
+    }
+  };
+
+  // Konversi status API menjadi label yang dipakai pada dashboard.
+  const adoptionStatusLabel = (status) => ({
+    diverifikasi: 'SK Pengangkatan Anak Terbit (Disetujui)',
+    ditolak: 'Berkas Ditolak Sidang PIPA',
+    butuh_dokumen_tambahan: 'Menunggu Unggah Ulang Berkas',
+    menunggu_tinjauan_manual: 'Menunggu Tinjauan Manual AI',
+    diajukan: 'Pengajuan Diajukan',
+  }[String(status || '').toLowerCase()] || 'Verifikasi Sidang PIPA Dinsos');
+
+  const updateAdoptionApplicationInState = (rawId, updatedFields) => {
+    setAdopsiApplications((prev) => prev.map((app) =>
+      app.rawId === rawId ? { ...app, ...updatedFields } : app
+    ));
+    setSelectedAdopsiApplicant((prev) =>
+      prev?.rawId === rawId ? { ...prev, ...updatedFields } : prev
+    );
+  };
+
+  // Callback ini dipakai AdminDocumentReview supaya keputusan tersimpan di backend
+  // sebelum UI menampilkan keberhasilan.
+  const handleModalAdoptionStatus = async (newStatus) => {
+    const selected = selectedAdopsiApplicant;
+    if (!selected?.rawId) {
+      throw new Error('ID pengajuan database tidak tersedia. Pilih pengajuan dari daftar backend.');
+    }
+    const loadingKey = `adopsi-modal-${selected.rawId}`;
+    if (actionLoading[loadingKey]) return;
+
+    setActionLoading((prev) => ({ ...prev, [loadingKey]: true }));
+    try {
+      const saved = await adopsiService.updateAdoptionStatus(selected.rawId, newStatus);
+      const persistedStatus = String(saved?.status || newStatus).toLowerCase();
+      const status = adoptionStatusLabel(persistedStatus);
+      updateAdoptionApplicationInState(selected.rawId, {
+        rawStatus: persistedStatus,
+        status,
+      });
+      showToast(`Status pengajuan berhasil disimpan: ${status}.`);
+      return saved;
+    } catch (err) {
+      showToast(err?.friendlyMessage || err?.message || 'Gagal menyimpan status pengajuan ke backend.');
+      throw err;
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [loadingKey]: false }));
+    }
+  };
+
+  const handleReanalyzeSelectedAdoptionAI = async () => {
+    const selected = selectedAdopsiApplicant;
+    if (!selected?.rawId) {
+      throw new Error('ID pengajuan database tidak tersedia. Pilih pengajuan dari daftar backend.');
+    }
+    const loadingKey = `adopsi-ai-${selected.rawId}`;
+    if (actionLoading[loadingKey]) return;
+
+    setActionLoading((prev) => ({ ...prev, [loadingKey]: true }));
+    try {
+      const result = await adopsiService.reanalyzeAdoptionAI(selected.rawId);
+      const persistedStatus = String(result?.status || selected.rawStatus || '').toLowerCase();
+      const fields = {
+        rawStatus: persistedStatus,
+        status: adoptionStatusLabel(persistedStatus),
+        hasil_ekstraksi_ai: result?.hasil_ekstraksi_ai ?? selected.hasil_ekstraksi_ai ?? null,
+      };
+      updateAdoptionApplicationInState(selected.rawId, fields);
+      showToast('Analisis ulang selesai dan respons backend diterima.');
+      return result;
+    } catch (err) {
+      showToast(err?.friendlyMessage || err?.message || 'Analisis ulang AI gagal dijalankan.');
+      throw err;
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [loadingKey]: false }));
+    }
+  };
+
   // Handlers for Super Admin
   const handleApprovePanti = (id) => {
     setPantiRegistrations(prev => prev.map(p => p.id === id ? { ...p, status: 'Disetujui / Aktif', akreditasi: 'AKREDITASI A' } : p));
@@ -475,35 +729,47 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
 
   const handleApproveAdopsi = async (id) => {
     if (actionLoading[id]) return;
-    setActionLoading(prev => ({ ...prev, [id]: true }));
-    const app = adopsiApplications.find(a => a.id === id);
-    if (app?.rawId) {
-      try {
-        await adopsiService.updateAdoptionStatus(app.rawId, 'diverifikasi');
-      } catch (err) {
-        console.warn('API update adopsi fallback:', err);
-      }
+    const app = adopsiApplications.find((item) => item.id === id);
+    if (!app?.rawId) {
+      showToast('ID pengajuan dari database tidak tersedia.');
+      return;
     }
-    setAdopsiApplications(prev => prev.map(a => a.id === id ? { ...a, status: 'SK Pengangkatan Anak Terbit (Disetujui)' } : a));
-    showToast(`Permohonan Adopsi ${id} Resmi Disetujui melalui Sidang PIPA Dinsos!`);
-    triggerConfetti();
-    setActionLoading(prev => ({ ...prev, [id]: false }));
+
+    setActionLoading((prev) => ({ ...prev, [id]: true }));
+    try {
+      const saved = await adopsiService.updateAdoptionStatus(app.rawId, 'diverifikasi');
+      const rawStatus = String(saved?.status || 'diverifikasi').toLowerCase();
+      const status = adoptionStatusLabel(rawStatus);
+      updateAdoptionApplicationInState(app.rawId, { rawStatus, status });
+      showToast(`Permohonan ${id} berhasil diperbarui di backend.`);
+      triggerConfetti();
+    } catch (err) {
+      showToast(err?.friendlyMessage || err?.message || 'Gagal menyetujui pengajuan di backend.');
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [id]: false }));
+    }
   };
 
   const handleRejectAdopsi = async (id) => {
     if (actionLoading[id]) return;
-    setActionLoading(prev => ({ ...prev, [id]: true }));
-    const app = adopsiApplications.find(a => a.id === id);
-    if (app?.rawId) {
-      try {
-        await adopsiService.updateAdoptionStatus(app.rawId, 'ditolak');
-      } catch (err) {
-        console.warn('API update adopsi fallback:', err);
-      }
+    const app = adopsiApplications.find((item) => item.id === id);
+    if (!app?.rawId) {
+      showToast('ID pengajuan dari database tidak tersedia.');
+      return;
     }
-    setAdopsiApplications(prev => prev.map(a => a.id === id ? { ...a, status: 'Berkas Ditolak Sidang PIPA' } : a));
-    showToast(`Permohonan Adopsi ${id} DITOLAK.`);
-    setActionLoading(prev => ({ ...prev, [id]: false }));
+
+    setActionLoading((prev) => ({ ...prev, [id]: true }));
+    try {
+      const saved = await adopsiService.updateAdoptionStatus(app.rawId, 'ditolak');
+      const rawStatus = String(saved?.status || 'ditolak').toLowerCase();
+      const status = adoptionStatusLabel(rawStatus);
+      updateAdoptionApplicationInState(app.rawId, { rawStatus, status });
+      showToast(`Permohonan ${id} berhasil ditolak dan tersimpan di backend.`);
+    } catch (err) {
+      showToast(err?.friendlyMessage || err?.message || 'Gagal menolak pengajuan di backend.');
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [id]: false }));
+    }
   };
 
   const handleVerifyDonationAdmin = async (donationId, newStatus) => {
@@ -553,36 +819,41 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
     }
   };
 
-  const handleEskalasiReport = async (id) => {
-    const r = lostChildReports.find(x => x.id === id);
-    if (r?.rawId) {
-      try {
-        await pengaduanService.updatePengaduanStatus(r.rawId, 'diproses');
-      } catch (err) {
-        console.warn('Eskalasi report err:', err);
-      }
+  // Ubah status melalui API backend agar perubahan tercatat di database/audit trail.
+  const handleUpdateReportStatus = async (report, newStatus) => {
+    const id = report?.id;
+    if (!report?.rawId) {
+      showToast('Laporan ini tidak memiliki ID database yang dapat diperbarui.');
+      return;
     }
-    setLostChildReports(prev => prev.map(rep => rep.id === id ? { ...rep, status: 'Eskalasi TRC & Kepolisian' } : rep));
-    showToast(`Kasus ${id} telah DIESKALASI ke Tim TRC Dinsos & Polsek setempat!`);
-  };
-
-  const handleResolveReport = async (id) => {
-    const r = lostChildReports.find(x => x.id === id);
+    if (!['baru', 'diproses', 'selesai'].includes(newStatus)) {
+      showToast('Status laporan tidak valid.');
+      return;
+    }
     if (actionLoading[id]) return;
+
     setActionLoading(prev => ({ ...prev, [id]: true }));
     try {
-      if (r?.rawId) {
-        await pengaduanService.updatePengaduanStatus(r.rawId, 'selesai');
-      }
-      setLostChildReports(prev => prev.map(rep => rep.id === id ? { ...rep, status: 'Selesai / Ditangani' } : rep));
-      showToast(`Kasus ${id} telah ditandai SELESAI.`);
-      triggerConfetti();
+      await pengaduanService.updatePengaduanStatus(report.rawId, newStatus);
+
+      const displayStatus = {
+        baru: 'Baru Masuk / Menunggu Tindakan',
+        diproses: 'Eskalasi TRC & Kepolisian',
+        selesai: 'Selesai / Ditangani',
+      }[newStatus];
+
+      setComplaintReports(prev => prev.map(rep =>
+        rep.id === id ? { ...rep, status: displayStatus } : rep
+      ));
+      showToast(`Status laporan ${id} berhasil diubah menjadi: ${displayStatus}.`);
+      if (newStatus === 'selesai') triggerConfetti();
     } catch (err) {
-      showToast(err.friendlyMessage || 'Gagal menyelesaikan pengaduan');
+      showToast(err?.friendlyMessage || err?.message || 'Gagal mengubah status laporan di backend.');
     } finally {
       setActionLoading(prev => ({ ...prev, [id]: false }));
     }
   };
+
 
   // Handlers for Admin Panti
   const handleAddChild = (e) => {
@@ -671,7 +942,7 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
   const triggerConfetti = () => {
     try {
       confetti({ particleCount: 110, spread: 80, origin: { y: 0.6 } });
-    } catch (e) {}
+    } catch (e) { }
   };
 
   const handleExportReport = (format) => {
@@ -680,7 +951,7 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', maxHeight: '100vh', overflow: 'hidden', background: '#f8fafc', color: '#0f172a' }}>
-      
+
       {/* Toast Alert Notice */}
       {toastMsg && (
         <div style={{
@@ -720,117 +991,41 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
         flexShrink: 0
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          {onSwitchToLanding && (
-            <button
-              onClick={onSwitchToLanding}
-              style={{
-                background: 'rgba(255,255,255,0.15)',
-                color: '#ffffff',
-                border: '1px solid rgba(255,255,255,0.25)',
-                padding: '0.4rem 0.85rem',
-                borderRadius: '8px',
-                fontSize: '0.775rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.35rem'
-              }}
-            >
-              ← Kembali ke Beranda Informasi
-            </button>
-          )}
-
           <div>
             <h3 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <LayoutDashboard size={18} color="#60a5fa" /> HaloKids Dashboard Workspace
+              <LayoutDashboard size={18} color="#60a5fa" />
+              {dashboardRoleMode === 'superadmin' ? 'HaloKids • Dinsos Control Center' : 'HaloKids • Workspace Admin LKSA'}
             </h3>
             <span style={{ fontSize: '0.7rem', color: '#bfdbfe' }}>
-              Portal Penggunaan Fitur Interaktif • Dinas Sosial Kabupaten
+              {dashboardRoleMode === 'superadmin'
+                ? 'Pengawasan, persetujuan, dan audit layanan sosial kabupaten'
+                : 'Pengelolaan operasional dan layanan LKSA'}
             </span>
           </div>
         </div>
 
-        {/* Right Header: Role Mode Switcher & User Profile */}
+        {/* Role ditampilkan sebagai label, bukan tombol pengganti role */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-          
-          {/* Mode Switcher Tabs */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            background: 'rgba(0, 0, 0, 0.3)',
-            padding: '0.2rem',
-            borderRadius: '10px',
-            border: '1px solid rgba(255, 255, 255, 0.15)'
+            gap: '0.4rem',
+            background: dashboardRoleMode === 'superadmin' ? 'rgba(225, 29, 72, 0.18)' : 'rgba(217, 119, 6, 0.18)',
+            border: `1px solid ${dashboardRoleMode === 'superadmin' ? 'rgba(251, 113, 133, 0.45)' : 'rgba(252, 211, 77, 0.45)'}`,
+            color: '#ffffff',
+            padding: '0.45rem 0.75rem',
+            borderRadius: '9px',
+            fontSize: '0.75rem',
+            fontWeight: 800,
+            whiteSpace: 'nowrap'
           }}>
-            <button
-              onClick={() => setDashboardRoleMode('superadmin')}
-              style={{
-                background: dashboardRoleMode === 'superadmin' ? '#e11d48' : 'transparent',
-                color: '#ffffff',
-                border: 'none',
-                padding: '0.35rem 0.65rem',
-                borderRadius: '7px',
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-                boxShadow: dashboardRoleMode === 'superadmin' ? '0 2px 8px rgba(225, 29, 72, 0.4)' : 'none',
-                transition: 'all 0.15s ease'
-              }}
-              title="Mode Super Admin (Dinas Sosial)"
-            >
-              <ShieldCheck size={14} color={dashboardRoleMode === 'superadmin' ? '#fff' : '#fda4af'} />
-              <span>Super Admin</span>
-            </button>
-
-            <button
-              onClick={() => setDashboardRoleMode('pantiadmin')}
-              style={{
-                background: dashboardRoleMode === 'pantiadmin' ? '#d97706' : 'transparent',
-                color: '#ffffff',
-                border: 'none',
-                padding: '0.35rem 0.65rem',
-                borderRadius: '7px',
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-                boxShadow: dashboardRoleMode === 'pantiadmin' ? '0 2px 8px rgba(217, 119, 6, 0.4)' : 'none',
-                transition: 'all 0.15s ease'
-              }}
-              title="Mode Admin Panti Asuhan (LKSA)"
-            >
-              <Building2 size={14} color={dashboardRoleMode === 'pantiadmin' ? '#fff' : '#fcd34d'} />
-              <span>Admin LKSA</span>
-            </button>
-
-            <button
-              onClick={() => setDashboardRoleMode('user')}
-              style={{
-                background: dashboardRoleMode === 'user' ? '#2563eb' : 'transparent',
-                color: '#ffffff',
-                border: 'none',
-                padding: '0.35rem 0.65rem',
-                borderRadius: '7px',
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-                boxShadow: dashboardRoleMode === 'user' ? '0 2px 8px rgba(37, 99, 235, 0.4)' : 'none',
-                transition: 'all 0.15s ease'
-              }}
-              title="Mode Fitur Publik Warga"
-            >
-              <User size={14} color={dashboardRoleMode === 'user' ? '#fff' : '#93c5fd'} />
-              <span>User Publik</span>
-            </button>
+            {dashboardRoleMode === 'superadmin' ? (
+              <><ShieldCheck size={14} color="#fda4af" /> Super Admin Dinsos</>
+            ) : dashboardRoleMode === 'pantiadmin' ? (
+              <><Building2 size={14} color="#fcd34d" /> Admin LKSA</>
+            ) : (
+              <><User size={14} color="#93c5fd" /> User Publik</>
+            )}
           </div>
 
           {/* User profile & Logout */}
@@ -840,7 +1035,11 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
                 {currentUser?.name || 'Admin Dinsos'}
               </div>
               <div style={{ fontSize: '0.675rem', color: '#93c5fd' }}>
-                {currentUser?.role || (dashboardRoleMode === 'superadmin' ? 'Super Admin' : dashboardRoleMode === 'pantiadmin' ? 'Admin Panti' : 'User Publik')}
+                {dashboardRoleMode === 'superadmin'
+                  ? 'Super Admin Dinsos'
+                  : dashboardRoleMode === 'pantiadmin'
+                    ? 'Admin LKSA'
+                    : 'User Publik'}
               </div>
             </div>
 
@@ -870,7 +1069,7 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
 
       {/* DASHBOARD LAYOUT (SIDEBAR + MAIN CONTENT) */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-        
+
         {/* SIDEBAR NAVIGATION */}
         <aside style={{
           width: '270px',
@@ -933,9 +1132,9 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
               /* SUPER ADMIN MENU */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                 {[
-                  { id: 'approval_panti', label: '1. Approval & Status LKSA', icon: Building2, count: pantiRegistrations.filter(p=>p.status.includes('Menunggu')).length },
+                  { id: 'approval_panti', label: '1. Approval & Status LKSA', icon: Building2, count: pantiRegistrations.filter(p => p.status.includes('Menunggu')).length },
                   { id: 'supervisi_adopsi', label: '2. Supervisi Adopsi (PIPA)', icon: Users, count: adopsiApplications.length },
-                  { id: 'monitoring_hilang', label: '3. Kontrol Anak Hilang', icon: ShieldAlert, count: lostChildReports.filter(r=>!r.status.includes('Selesai')).length },
+                  { id: 'monitoring_hilang', label: '3. Pengaduan & Kedaruratan', icon: ShieldAlert, count: complaintReports.filter(r => !r.status.includes('Selesai')).length },
                   { id: 'audit_donasi', label: '4. Audit & Map Donasi', icon: Wallet, count: null },
                   { id: 'analitik_eksekutif', label: '5. Dashboard Analitis', icon: TrendingUp, count: null }
                 ].map((menu) => (
@@ -1044,7 +1243,7 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
 
         {/* MAIN DISPLAY AREA */}
         <main style={{ flex: 1, padding: '2rem', overflowY: 'auto', minHeight: 0, height: '100%' }}>
-          
+
           {/* ==================================================== */}
           {/* VIEW TYPE USER: PUBLIK USER WORKSPACE                */}
           {/* ==================================================== */}
@@ -1511,7 +1710,7 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
                                       <button
                                         onClick={() => {
                                           setUserTrackTicketInput(rep.kode_tiket);
-                                          handleTrackUserTicket({ preventDefault: () => {} });
+                                          handleTrackUserTicket({ preventDefault: () => { } });
                                         }}
                                         style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '0.3rem 0.65rem', borderRadius: '6px', fontSize: '0.725rem', fontWeight: 700, cursor: 'pointer' }}
                                       >
@@ -1733,7 +1932,14 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
 
                     <button
                       onClick={() => {
-                        setSelectedAdopsiApplicant(adopsiApplications[0]);
+                        const nextApplicant = adopsiApplications.find((app) =>
+                          !['diverifikasi', 'ditolak'].includes(String(app.rawStatus || '').toLowerCase())
+                        ) || adopsiApplications[0];
+                        if (!nextApplicant?.rawId) {
+                          showToast('Belum ada pengajuan COTA dari backend untuk diperiksa.');
+                          return;
+                        }
+                        setSelectedAdopsiApplicant(nextApplicant);
                         setShowAiAdminReviewModal(true);
                       }}
                       style={{
@@ -1754,6 +1960,12 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
                       <Bot size={16} /> Buka Panel Inspeksi AI OCR (Split-Screen)
                     </button>
                   </div>
+
+                  {adopsiApplications.length === 0 && (
+                    <div style={{ marginBottom: '1rem', padding: '1rem 1.25rem', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '12px', color: '#475569', fontSize: '0.85rem' }}>
+                      Belum ada pengajuan COTA yang berhasil dimuat dari backend. Periksa koneksi API atau coba muat ulang halaman.
+                    </div>
+                  )}
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '1.5rem' }}>
                     {adopsiApplications.map((app) => (
@@ -1840,12 +2052,12 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
                 </div>
               )}
 
-              {/* MODULE 3: MONITORING PELAPORAN ANAK HILANG & KEDARURATAN */}
+              {/* MODULE 3: LAPORAN PENGADUAN NYATA DARI BACKEND */}
               {superAdminTab === 'monitoring_hilang' && (
                 <div>
                   <div style={{ marginBottom: '1.5rem' }}>
                     <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0b1f5c', margin: 0 }}>
-                      3. Pusat Kontrol Pelaporan Anak Hilang &amp; Kedaruratan
+                      3. Pusat Kontrol Pengaduan &amp; Kedaruratan
                     </h2>
                     <p style={{ fontSize: '0.875rem', color: '#64748b', margin: 0 }}>
                       Memantau aduan masyarakat dan melakukan eskalasi darurat ke Tim Reaksi Cepat (TRC) Dinsos &amp; Kepolisian.
@@ -1853,7 +2065,19 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    {lostChildReports.map((report) => (
+                    {reportSyncStatus === 'error' ? (
+                      <div role="alert" style={{ background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: '12px', padding: '1rem' }}>
+                        <strong>Data laporan gagal dimuat.</strong> {reportSyncError}
+                      </div>
+                    ) : reportSyncStatus === 'loading' ? (
+                      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1rem', color: '#475569' }}>
+                        Memuat laporan dari backend...
+                      </div>
+                    ) : complaintReports.length === 0 ? (
+                      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1rem', color: '#475569' }}>
+                        Belum ada laporan pengaduan tersimpan di database.
+                      </div>
+                    ) : complaintReports.map((report) => (
                       <div key={report.id} style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
@@ -1863,31 +2087,91 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
                             </span>
                           </div>
                           <p style={{ fontSize: '0.825rem', color: '#475569', margin: '0 0 0.35rem 0' }}>
-                            Pelapor: <strong>{report.reporter}</strong> • Lokasi Hilang: <strong>{report.location}</strong> ({report.date})
+                            Pelapor: <strong>{report.reporter}</strong> • Wilayah: <strong>{report.location}</strong> ({report.date})
                           </p>
                           <span style={{ fontSize: '0.75rem', color: report.status.includes('Selesai') ? '#15803d' : '#0284c7', fontWeight: 700 }}>
                             Status Penanganan: {report.status} ({report.officer})
                           </span>
+                          {report.isi_laporan && (
+                            <details style={{ marginTop: '0.75rem', maxWidth: '720px' }}>
+                              <summary style={{ cursor: 'pointer', color: '#1d4ed8', fontSize: '0.8rem', fontWeight: 700 }}>
+                                Lihat isi laporan (akses petugas berwenang)
+                              </summary>
+                              <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginTop: '0.5rem', padding: '0.75rem', borderRadius: '8px', background: '#f8fafc', border: '1px solid #e2e8f0', color: '#334155', fontSize: '0.8rem', fontFamily: 'inherit' }}>
+                                {report.isi_laporan}
+                              </pre>
+                            </details>
+                          )}
+                          <div style={{ marginTop: '0.75rem' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleLoadReportAttachments(report)}
+                              disabled={Boolean(reportAttachmentsLoading[report.rawId])}
+                              style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '0.45rem 0.7rem', fontSize: '0.775rem', fontWeight: 700, cursor: reportAttachmentsLoading[report.rawId] ? 'wait' : 'pointer' }}
+                            >
+                              {reportAttachmentsLoading[report.rawId] ? 'Memuat lampiran...' : 'Muat / Perbarui Tautan Lampiran Privat'}
+                            </button>
+                            {reportAttachmentsErrors[report.rawId] && (
+                              <p role="alert" style={{ color: '#b91c1c', fontSize: '0.75rem', margin: '0.45rem 0 0' }}>
+                                {reportAttachmentsErrors[report.rawId]}
+                              </p>
+                            )}
+                            {Array.isArray(reportAttachments[report.rawId]) && reportAttachments[report.rawId].length > 0 && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginTop: '0.5rem' }}>
+                                {reportAttachments[report.rawId].map((attachment, index) => (
+                                  <a
+                                    key={`${attachment.nama_file}-${index}`}
+                                    href={attachment.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{ color: '#1d4ed8', fontSize: '0.8rem', fontWeight: 700, overflowWrap: 'anywhere' }}
+                                  >
+                                    <FileText size={14} style={{ display: 'inline', marginRight: '0.35rem' }} />
+                                    {attachment.nama_file || `Lampiran ${index + 1}`} — buka tautan aman (berlaku 5 menit)
+                                  </a>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </div>
 
-                        {!report.status.includes('Selesai') && (
-                          <div style={{ display: 'flex', gap: '0.5rem' }}>
-                            <button
-                              onClick={() => handleEskalasiReport(report.id)}
-                              style={{ background: '#dc2626', color: '#fff', border: 'none', padding: '0.55rem 1rem', borderRadius: '50px', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
-                            >
-                              <ShieldAlert size={16} /> Eskalasi Ke TRC / Kepolisian
-                            </button>
-                            <button
-                              onClick={() => handleResolveReport(report.id)}
-                              disabled={actionLoading[report.id]}
-                              style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '0.55rem 1rem', borderRadius: '50px', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
-                            >
-                              {actionLoading[report.id] ? <RefreshCw size={14} className="spin" /> : <CheckCircle2 size={16} />}
-                              <span>Tandai Selesai</span>
-                            </button>
-                          </div>
-                        )}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.55rem', minWidth: '240px' }}>
+                          <label
+                            htmlFor={`status-pengaduan-${report.rawId || report.id}`}
+                            style={{ fontSize: '0.775rem', color: '#334155', fontWeight: 800 }}
+                          >
+                            Ubah status penanganan
+                          </label>
+                          <select
+                            id={`status-pengaduan-${report.rawId || report.id}`}
+                            value={report.status.includes('Selesai') ? 'selesai' : report.status.includes('Eskalasi') ? 'diproses' : 'baru'}
+                            onChange={(event) => handleUpdateReportStatus(report, event.target.value)}
+                            disabled={Boolean(actionLoading[report.id]) || !report.rawId}
+                            aria-label={`Ubah status pengaduan ${report.id}`}
+                            style={{
+                              width: '100%',
+                              minHeight: '40px',
+                              padding: '0.55rem 0.75rem',
+                              borderRadius: '9px',
+                              border: '1px solid #cbd5e1',
+                              background: actionLoading[report.id] ? '#f1f5f9' : '#ffffff',
+                              color: '#0f172a',
+                              fontSize: '0.825rem',
+                              fontWeight: 700,
+                              cursor: actionLoading[report.id] ? 'wait' : 'pointer',
+                            }}
+                          >
+                            <option value="baru">Baru / Menunggu Tindakan</option>
+                            <option value="diproses">Diproses / Eskalasi TRC</option>
+                            <option value="selesai">Selesai / Ditangani</option>
+                          </select>
+                          {actionLoading[report.id] && (
+                            <span role="status" style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                              <RefreshCw size={13} className="spin" style={{ display: 'inline', marginRight: '0.3rem' }} />
+                              Menyimpan perubahan status...
+                            </span>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -2159,15 +2443,15 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
                       </h3>
 
                       <form onSubmit={handleAddGoodsNeed} style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
-                        <input 
-                          type="text" 
+                        <input
+                          type="text"
                           placeholder="Nama barang (contoh: Sembako, Popok, Buku)"
                           value={newNeedItem}
                           onChange={(e) => setNewNeedItem(e.target.value)}
                           style={{ flex: '1 1 180px', minWidth: '150px', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none' }}
                         />
-                        <input 
-                          type="text" 
+                        <input
+                          type="text"
                           placeholder="Target Qty (misal: 20 Paket)"
                           value={newNeedQty}
                           onChange={(e) => setNewNeedQty(e.target.value)}
@@ -2195,8 +2479,8 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
                           const badgeStyle = isUrgent
                             ? { background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca' }
                             : isWarning
-                            ? { background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a' }
-                            : { background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' };
+                              ? { background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a' }
+                              : { background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' };
 
                           return (
                             <div key={item.id} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '0.75rem 0.95rem', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
@@ -2228,7 +2512,7 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
                               <span style={{ fontSize: '0.75rem', color: '#475569' }}>{cash.donor} • {cash.program}</span>
                               <span style={{ fontSize: '0.7rem', color: '#94a3b8', display: 'block', marginTop: '2px' }}>Tanggal: {cash.date}</span>
                             </div>
-                            
+
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                               <span style={{
                                 background: cash.status === 'terverifikasi' ? '#dcfce7' : cash.status === 'ditolak' ? '#fee2e2' : '#fef3c7',
@@ -2470,8 +2754,8 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
                       .filter(v => {
                         const matchFilter = volunteerFilter === 'Semua' ? true : v.status === volunteerFilter;
                         const matchSearch = v.nama.toLowerCase().includes(volunteerSearch.toLowerCase()) ||
-                                            v.bidang.toLowerCase().includes(volunteerSearch.toLowerCase()) ||
-                                            v.nomorHp.includes(volunteerSearch);
+                          v.bidang.toLowerCase().includes(volunteerSearch.toLowerCase()) ||
+                          v.nomorHp.includes(volunteerSearch);
                         return matchFilter && matchSearch;
                       })
                       .map((vol) => (
@@ -2816,7 +3100,7 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
                 <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '0.35rem' }}>
                   Nama Lengkap Anak
                 </label>
-                <input 
+                <input
                   type="text"
                   placeholder="Masukkan nama anak"
                   value={newChildName}
@@ -2830,7 +3114,7 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
                 <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '0.35rem' }}>
                   Usia (Tahun)
                 </label>
-                <input 
+                <input
                   type="number"
                   placeholder="Contoh: 5"
                   value={newChildAge}
@@ -2865,48 +3149,18 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
         </div>
       )}
 
-      {/* MODAL: PANEL INSPEKSI AI OCR DOKUMEN COTA & DONASI */}
-      {showAiAdminReviewModal && (
+      {/* MODAL: PANEL INSPEKSI AI OCR DOKUMEN COTA */}
+      {showAiAdminReviewModal && selectedAdopsiApplicant && (
         <AdminDocumentReview
           isOpen={showAiAdminReviewModal}
           onClose={() => setShowAiAdminReviewModal(false)}
           selectedApplicant={selectedAdopsiApplicant}
-          onApprove={(doc) => {
-            if (selectedAdopsiApplicant) {
-              setAdopsiApplications((prev) =>
-                prev.map((a) =>
-                  a.id === selectedAdopsiApplicant.id
-                    ? { ...a, status: 'SK Pengangkatan Anak Terbit (Disetujui)' }
-                    : a
-                )
-              );
-              showToast(`Dokumen ${selectedAdopsiApplicant.applicant} berhasil disetujui melalui verifikasi AI!`);
-            }
-          }}
-          onReject={(doc, reason) => {
-            if (selectedAdopsiApplicant) {
-              setAdopsiApplications((prev) =>
-                prev.map((a) =>
-                  a.id === selectedAdopsiApplicant.id
-                    ? { ...a, status: 'Berkas Ditolak Sidang PIPA' }
-                    : a
-                )
-              );
-              showToast(`Dokumen ${selectedAdopsiApplicant.applicant} ditolak. BAP Sidang telah dicatat.`);
-            }
-          }}
-          onReupload={(doc, reasons) => {
-            if (selectedAdopsiApplicant) {
-              setAdopsiApplications((prev) =>
-                prev.map((a) =>
-                  a.id === selectedAdopsiApplicant.id
-                    ? { ...a, status: 'Menunggu Unggah Ulang Berkas' }
-                    : a
-                )
-              );
-              showToast(`Permintaan perbaikan berkas telah dikirim ke pemohon.`);
-            }
-          }}
+          onReanalyzeAI={handleReanalyzeSelectedAdoptionAI}
+          isAnalyzingAI={Boolean(actionLoading[`adopsi-ai-${selectedAdopsiApplicant.rawId}`])}
+          isSavingDecision={Boolean(actionLoading[`adopsi-modal-${selectedAdopsiApplicant.rawId}`])}
+          onApprove={() => handleModalAdoptionStatus('diverifikasi')}
+          onReject={() => handleModalAdoptionStatus('ditolak')}
+          onReupload={() => handleModalAdoptionStatus('butuh_dokumen_tambahan')}
         />
       )}
 

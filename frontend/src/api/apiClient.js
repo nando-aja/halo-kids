@@ -1,10 +1,14 @@
 import axios from 'axios';
 
-export const API_BASE_URL = 
-  import.meta.env.VITE_API_BASE_URL || 
-  import.meta.env.VITE_API_URL || 
-  import.meta.env.REACT_APP_API_URL || 
-  'http://localhost:8000';
+const configuredApiUrl =
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_API_URL ||
+  import.meta.env.REACT_APP_API_URL ||
+  'http://127.0.0.1:8000';
+
+export const API_BASE_URL = configuredApiUrl
+  .trim()
+  .replace(/\/+$/, '');
 
 export const TOKEN_STORAGE_KEY = 'halokids_access_token';
 export const SESSION_STORAGE_KEY = 'halokids_active_session';
