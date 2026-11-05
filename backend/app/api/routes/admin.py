@@ -414,23 +414,80 @@ def update_donation_status(
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    item = db.query(Donasi).filter(Donasi.id == donation_id).first()
+
+    item = (
+        db.query(Donasi)
+        .filter(Donasi.id == donation_id)
+        .first()
+    )
 
     if item is None:
-        raise HTTPException(404, "Donasi tidak ditemukan")
+        raise HTTPException(
+            status_code=404,
+            detail="Donasi tidak ditemukan",
+        )
+
 
     previous_status = item.status_verifikasi
-    if previous_status == "terverifikasi" and new_status != "terverifikasi":
+
+
+    # ==========================================
+    # VALIDASI STATUS LAMA
+    # ==========================================
+
+    if (
+        previous_status == "terverifikasi"
+        and new_status != "terverifikasi"
+    ):
         raise HTTPException(
-            409, "Donasi yang sudah terverifikasi tidak dapat dibatalkan"
-        )
-    if previous_status == "ditolak" and new_status == "terverifikasi":
-        raise HTTPException(
-            409,
-            "Donasi yang sudah ditolak tidak dapat diverifikasi ulang; buat donasi baru",
+            status_code=409,
+            detail=(
+                "Donasi yang telah diverifikasi "
+                "tidak dapat dibatalkan"
+            ),
         )
 
+    if (
+        previous_status == "ditolak"
+        and new_status == "terverifikasi"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Donasi yang telah ditolak "
+                "tidak dapat diverifikasi ulang"
+            ),
+        )
+
+
+    # ==========================================
+    # VALIDASI BUKTI DONASI UANG
+    # ==========================================
+
+    if (
+        new_status == "terverifikasi"
+        and item.jenis_donasi == "uang"
+        and not item.bukti_transfer
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Donasi uang belum memiliki "
+                "bukti transfer"
+            ),
+        )
+
+
+    # ==========================================
+    # UPDATE STATUS
+    # ==========================================
+
     item.status_verifikasi = new_status
+
+
+    # ==========================================
+    # UPDATE WISHLIST DONASI BARANG
+    # ==========================================
 
     if (
         new_status == "terverifikasi"
@@ -439,49 +496,184 @@ def update_donation_status(
         and item.id_wishlist is not None
         and item.jumlah_barang
     ):
+
         wishlist = (
-            db.query(WishlistPanti).filter(WishlistPanti.id == item.id_wishlist).first()
+            db.query(WishlistPanti)
+            .filter(
+                WishlistPanti.id == item.id_wishlist
+            )
+            .first()
         )
+
         if wishlist is not None:
+
             wishlist.jumlah_terpenuhi = min(
                 wishlist.jumlah_kebutuhan,
-                wishlist.jumlah_terpenuhi + item.jumlah_barang,
+                wishlist.jumlah_terpenuhi
+                + item.jumlah_barang,
             )
+
+
+    # ==========================================
+    # NOTIFIKASI WARGA
+    # ==========================================
 
     create_notification(
         db,
         item.id_user,
         "Status Donasi",
-        f"Status donasi #{item.id} berubah menjadi {new_status}.",
+        (
+            f"Donasi #{item.id} telah berubah "
+            f"menjadi {new_status}."
+        ),
     )
 
+
+    # ==========================================
+    # SIMPAN
+    # ==========================================
+
     db.commit()
+
     db.refresh(item)
+
     return item
 
-
-@router.post("/donasi/{donation_id}/analisis-bukti-ai")
+@router.post(
+    "/donasi/{donation_id}/analisis-bukti-ai"
+)
 def analyze_donation_proof(
     donation_id: int,
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    item = db.query(Donasi).filter(Donasi.id == donation_id).first()
+
+    # ==========================================
+    # 1. CARI TRANSAKSI
+    # ==========================================
+
+    item = (
+        db.query(Donasi)
+        .filter(Donasi.id == donation_id)
+        .first()
+    )
 
     if item is None:
-        raise HTTPException(404, "Donasi tidak ditemukan")
+        raise HTTPException(
+            status_code=404,
+            detail="Donasi tidak ditemukan",
+        )
+
+
+    # ==========================================
+    # 2. VALIDASI JENIS DONASI
+    # ==========================================
+
+    if item.jenis_donasi != "uang":
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Analisis bukti transfer hanya "
+                "berlaku untuk donasi uang"
+            ),
+        )
+
 
     if not item.bukti_transfer:
         raise HTTPException(
-            422,
-            "Donasi ini tidak memiliki bukti transfer",
+            status_code=422,
+            detail="Donasi tidak mempunyai bukti transfer",
         )
 
-    return analyze_transfer_proof(
-        item.bukti_transfer,
-        expected_amount=(item.jumlah_nominal if item.jenis_donasi == "uang" else None),
+
+    if not item.bukti_transfer.startswith(
+        "storage/bukti_transfer/"
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Lokasi bukti transfer tidak valid",
+        )
+
+
+    # ==========================================
+    # 3. JALANKAN OCR DAN AI
+    # ==========================================
+
+    try:
+
+        result = analyze_transfer_proof(
+            item.bukti_transfer,
+            expected_amount=item.jumlah_nominal,
+        )
+
+    except Exception as exc:
+
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Analisis bukti transfer gagal. "
+                "Periksa file dan konfigurasi OCR."
+            ),
+        ) from exc
+
+
+    # ==========================================
+    # 4. TENTUKAN REKOMENDASI AI
+    # ==========================================
+
+    nominal_match = (
+        result.get("nominal_donasi_cocok") is True
     )
 
+    requires_manual_review = bool(
+        result.get("requires_manual_review", True)
+    )
+
+    if nominal_match and not requires_manual_review:
+
+        recommendation = (
+            "direkomendasikan_untuk_disetujui"
+        )
+
+    else:
+
+        recommendation = (
+            "perlu_pemeriksaan_manual"
+        )
+
+
+    result["rekomendasi_ai"] = recommendation
+
+    # AI tidak pernah mengambil keputusan final
+    result["keputusan_final"] = (
+        "menunggu_persetujuan_dinsos"
+    )
+
+
+    # ==========================================
+    # 5. SIMPAN HASIL AI KE DATABASE
+    # ==========================================
+
+    item.hasil_analisis_ai = result
+
+    db.commit()
+
+    db.refresh(item)
+
+
+    # ==========================================
+    # 6. KEMBALIKAN HASIL ANALISIS
+    # ==========================================
+
+    return {
+        "message": "Analisis bukti transfer selesai",
+        "id_donasi": item.id,
+        "nominal_donasi": str(item.jumlah_nominal),
+        "nominal_donasi_cocok": nominal_match,
+        "rekomendasi_ai": recommendation,
+        "keputusan_final": "menunggu_persetujuan_dinsos",
+        "hasil_analisis_ai": result,
+    }
 
 @router.get(
     "/relawan",

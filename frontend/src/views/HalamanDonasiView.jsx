@@ -57,6 +57,15 @@ export default function HalamanDonasiView({
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showQrisModal, setShowQrisModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // ==========================================
+// DONATION PAYMENT & PROOF STATE
+// ==========================================
+
+const [showProofModal, setShowProofModal] = useState(false);
+const [proofFile, setProofFile] = useState(null);
+const [donationError, setDonationError] = useState('');
+const [createdDonation, setCreatedDonation] = useState(null);
+const [qrisImageError, setQrisImageError] = useState(false);
 
   // Goods Donation State
   const [copiedPantiId, setCopiedPantiId] = useState(null);
@@ -122,55 +131,181 @@ export default function HalamanDonasiView({
     return selectedNominal.toLocaleString('id-ID');
   };
 
-  const handleMoneySubmit = async (e) => {
-    e.preventDefault();
-    if (paymentMethod === 'qris') {
-      setShowQrisModal(true);
-    } else {
-      setIsSubmitting(true);
-      try {
-        const nominal = parseInt(customNominal || selectedNominal, 10);
-        await donasiService.createDonasi({
-          id_panti: 1,
-          jenis_donasi: 'uang',
-          jumlah_nominal: nominal,
-          bukti_transfer: 'storage/bukti_transfer/transfer_sample.jpg'
-        });
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('halokids:data_updated', { detail: { type: 'donasi' } }));
-        }
-      } catch (err) {
-        console.warn('API donasi uang fallback:', err);
-      } finally {
-        setIsSubmitting(false);
-        setShowSuccessModal(true);
-        triggerConfetti();
-      }
-    }
-  };
+const handleMoneySubmit = (e) => {
+  e.preventDefault();
 
-  const handleQrisPaid = async () => {
-    setShowQrisModal(false);
-    setIsSubmitting(true);
-    try {
-      const nominal = parseInt(customNominal || selectedNominal, 10);
-      await donasiService.createDonasi({
-        id_panti: 1,
-        jenis_donasi: 'uang',
-        jumlah_nominal: nominal,
-        bukti_transfer: 'storage/bukti_transfer/transfer_sample.jpg'
-      });
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('halokids:data_updated', { detail: { type: 'donasi' } }));
-      }
-    } catch (err) {
-      console.warn('API donasi QRIS fallback:', err);
-    } finally {
-      setIsSubmitting(false);
-      setShowSuccessModal(true);
-      triggerConfetti();
+  const nominal = Number.parseInt(
+    customNominal || selectedNominal,
+    10
+  );
+
+  if (!Number.isFinite(nominal) || nominal <= 0) {
+    setDonationError(
+      'Nominal donasi tidak valid.'
+    );
+    return;
+  }
+
+  if (!isLoggedIn) {
+    onOpenLogin?.();
+    return;
+  }
+
+  if (paymentMethod !== 'qris') {
+    setDonationError(
+      'Metode transfer bank belum diaktifkan. Silakan gunakan QRIS.'
+    );
+    return;
+  }
+
+  setDonationError('');
+
+  setQrisImageError(false);
+
+  setShowQrisModal(true);
+};
+
+const handleQrisPaid = () => {
+  setShowQrisModal(false);
+
+  setDonationError('');
+
+  setProofFile(null);
+
+  setShowProofModal(true);
+};
+
+const handleProofSubmit = async (e) => {
+  e.preventDefault();
+
+  if (!proofFile) {
+    setDonationError(
+      'Silakan pilih bukti transfer terlebih dahulu.'
+    );
+    return;
+  }
+
+  const allowedTypes = [
+    'image/jpeg',
+    'image/png',
+    'application/pdf'
+  ];
+
+  if (!allowedTypes.includes(proofFile.type)) {
+    setDonationError(
+      'Format file harus JPG, PNG, atau PDF.'
+    );
+    return;
+  }
+
+  if (proofFile.size > 10 * 1024 * 1024) {
+    setDonationError(
+      'Ukuran bukti transfer maksimal 10 MB.'
+    );
+    return;
+  }
+
+  const nominal = Number.parseInt(
+    customNominal || selectedNominal,
+    10
+  );
+
+  if (!Number.isFinite(nominal) || nominal <= 0) {
+    setDonationError('Nominal donasi tidak valid.');
+    return;
+  }
+
+  setIsSubmitting(true);
+  setDonationError('');
+
+  try {
+
+    // ========================================
+    // 1. UPLOAD BUKTI TRANSFER
+    // ========================================
+
+    const uploadResult =
+      await donasiService.uploadBuktiTransfer(
+        proofFile
+      );
+
+    if (!uploadResult?.bukti_transfer) {
+      throw new Error(
+        'Server tidak mengembalikan lokasi bukti transfer.'
+      );
     }
-  };
+
+
+    // ========================================
+    // 2. BUAT TRANSAKSI DONASI
+    // ========================================
+
+    const donationResult =
+      await donasiService.createDonasi({
+
+        id_panti: 1,
+
+        jenis_donasi: 'uang',
+
+        jumlah_nominal: nominal,
+
+        bukti_transfer: uploadResult.bukti_transfer
+
+      });
+
+
+    // ========================================
+    // 3. SIMPAN HASIL RESPONS
+    // ========================================
+
+    setCreatedDonation(donationResult);
+
+
+    // ========================================
+    // 4. UPDATE DASHBOARD
+    // ========================================
+
+    window.dispatchEvent(
+      new CustomEvent('halokids:data_updated', {
+        detail: {
+          type: 'donasi'
+        }
+      })
+    );
+
+
+    // ========================================
+    // 5. TAMPILKAN KONFIRMASI
+    // ========================================
+
+    setProofFile(null);
+
+    setShowProofModal(false);
+
+    setShowSuccessModal(true);
+
+    triggerConfetti();
+
+  } catch (err) {
+
+    console.error(
+      'Gagal mengirim donasi:',
+      err
+    );
+
+    setDonationError(
+      err?.friendlyMessage ||
+      err?.response?.data?.detail ||
+      err?.message ||
+      'Gagal mengirim donasi. Silakan coba kembali.'
+    );
+
+  } finally {
+
+    setIsSubmitting(false);
+
+  }
+};
 
   const triggerConfetti = () => {
     try {
@@ -872,91 +1007,650 @@ export default function HalamanDonasiView({
         </div>
       </section>
 
-      {/* MODAL 1: QRIS QR CODE MODAL */}
-      {showQrisModal && (
-        <div className="modal-overlay" onClick={() => setShowQrisModal(false)}>
-          <div className="modal-container" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px', textAlign: 'center', padding: '1.75rem' }}>
-            <span style={{ background: '#eff6ff', color: '#1d4ed8', fontSize: '0.75rem', fontWeight: 800, padding: '0.25rem 0.75rem', borderRadius: '50px', display: 'inline-block', marginBottom: '0.75rem' }}>
-              QRIS STANDARD BANK INDONESIA
-            </span>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0b1f5c', margin: '0 0 0.25rem 0' }}>
-              Pindai QRIS Untuk Membayar
-            </h3>
-            <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 1rem 0' }}>
-              Buka aplikasi GoPay, OVO, Dana, ShopeePay, atau Mobile Banking Anda.
-            </p>
+{/* MODAL QRIS ASLI */}
+{showQrisModal && (
+  <div
+    className="modal-overlay"
+    onClick={() => setShowQrisModal(false)}
+  >
+    <div
+      className="modal-container"
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        maxWidth: '480px',
+        width: '95%',
+        textAlign: 'center',
+        padding: '1.75rem'
+      }}
+    >
+      <span
+        style={{
+          background: '#eff6ff',
+          color: '#1d4ed8',
+          fontSize: '0.75rem',
+          fontWeight: 800,
+          padding: '0.35rem 0.85rem',
+          borderRadius: '50px'
+        }}
+      >
+        QRIS PEMBAYARAN
+      </span>
 
-            {/* Generated QR Code Box */}
-            <div style={{
-              background: '#ffffff',
-              border: '2px solid #0b1f5c',
-              borderRadius: '16px',
-              padding: '1.25rem',
-              display: 'inline-block',
-              margin: '0 auto 1.25rem auto',
-              boxShadow: '0 8px 20px rgba(0,0,0,0.1)'
-            }}>
-              <div style={{ background: '#000000', width: '180px', height: '180px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', borderRadius: '8px', position: 'relative' }}>
-                <QrCode size={140} color="#ffffff" />
-                <div style={{ position: 'absolute', background: '#ffffff', padding: '0.2rem 0.5rem', borderRadius: '4px', color: '#0b1f5c', fontWeight: 900, fontSize: '0.65rem' }}>
-                  QRIS DINSOS
-                </div>
-              </div>
-              <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1d4ed8', display: 'block', marginTop: '0.75rem' }}>
-                Rp {getFinalAmount()}
-              </span>
-            </div>
+      <h3
+        style={{
+          fontSize: '1.3rem',
+          fontWeight: 800,
+          color: '#0b1f5c',
+          margin: '1rem 0 0.5rem'
+        }}
+      >
+        Scan QRIS untuk Membayar
+      </h3>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <button onClick={handleQrisPaid} className="btn btn-primary" style={{ width: '100%', borderRadius: '50px' }}>
-                ✔ SAYA SUDAH MEMBAYAR / SCAN QRIS
-              </button>
-              <button onClick={() => setShowQrisModal(false)} className="btn btn-secondary" style={{ width: '100%', borderRadius: '50px' }}>
-                Batal
-              </button>
-            </div>
+      <p
+        style={{
+          fontSize: '0.85rem',
+          color: '#64748b',
+          marginBottom: '1rem'
+        }}
+      >
+        Scan menggunakan aplikasi mobile banking
+        atau e-wallet yang mendukung QRIS.
+      </p>
+
+      {/* QRIS IMAGE */}
+      <div
+        style={{
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderRadius: '16px',
+          padding: '1rem',
+          marginBottom: '1rem'
+        }}
+      >
+        {!qrisImageError ? (
+          <img
+            src="/images/qris-halokids.jpeg"
+            alt="QRIS pembayaran donasi"
+            onError={() => setQrisImageError(true)}
+            style={{
+              display: 'block',
+              width: '100%',
+              maxWidth: '320px',
+              height: 'auto',
+              margin: '0 auto',
+              objectFit: 'contain'
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              padding: '2rem',
+              color: '#dc2626',
+              fontSize: '0.85rem'
+            }}
+          >
+            Gambar QRIS belum ditemukan.
+            Periksa folder public/images.
           </div>
+        )}
+
+        <div
+          style={{
+            marginTop: '0.75rem',
+            background: '#eff6ff',
+            padding: '0.85rem',
+            borderRadius: '10px'
+          }}
+        >
+          <span
+            style={{
+              color: '#64748b',
+              fontSize: '0.8rem'
+            }}
+          >
+            Nominal pembayaran
+          </span>
+
+          <strong
+            style={{
+              display: 'block',
+              color: '#1d4ed8',
+              fontSize: '1.35rem',
+              marginTop: '0.25rem'
+            }}
+          >
+            Rp {getFinalAmount()}
+          </strong>
         </div>
-      )}
+      </div>
 
-      {/* MODAL 2: MONETARY DONATION SUCCESS */}
-      {showSuccessModal && (
-        <div className="modal-overlay" onClick={() => setShowSuccessModal(false)}>
-          <div className="modal-container" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px', textAlign: 'center', padding: '2rem' }}>
-            <div style={{ background: '#dcfce7', color: '#15803d', width: '64px', height: '64px', borderRadius: '50%', margin: '0 auto 1.25rem auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <CheckCircle2 size={36} />
-            </div>
+      <div
+        style={{
+          background: '#fffbeb',
+          border: '1px solid #fde68a',
+          borderRadius: '10px',
+          padding: '0.85rem',
+          textAlign: 'left',
+          fontSize: '0.78rem',
+          color: '#92400e',
+          marginBottom: '1rem'
+        }}
+      >
+        <strong>Perhatian:</strong>
 
-            <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0b1f5c', margin: '0 0 0.5rem 0' }}>
-              Terima Kasih Atas Donasi Anda!
-            </h3>
+        <p style={{ margin: '0.35rem 0 0' }}>
+          QRIS ini bersifat statis. Masukkan nominal
+          pembayaran sesuai nominal yang tertera di
+          HaloKids. Periksa kembali nama penerima
+          sebelum menyelesaikan pembayaran.
+        </p>
+      </div>
 
-            <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0 0 1.25rem 0', lineHeight: 1.5 }}>
-              Donasi sebesar <strong>Rp {getFinalAmount()}</strong> untuk <strong>{selectedProgram}</strong> telah tercatat secara resmi.
-            </p>
+      <button
+        onClick={handleQrisPaid}
+        disabled={qrisImageError}
+        className="btn btn-primary"
+        style={{
+          width: '100%',
+          borderRadius: '50px',
+          padding: '0.85rem'
+        }}
+      >
+        Saya Sudah Membayar — Lanjut Upload Bukti
+      </button>
 
-            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '1rem', borderRadius: '12px', fontSize: '0.8rem', color: '#1e293b', marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.35rem', textAlign: 'left' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>No. Referensi:</span>
-                <strong>DNS-DON-{Math.floor(100000 + Math.random() * 900000)}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>Donatur:</span>
-                <strong>{donorName || 'Hamba Allah (Anonim)'}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>Status Pembayaran:</span>
-                <span style={{ color: '#15803d', fontWeight: 700 }}>BERHASIL / VERIFIED</span>
-              </div>
-            </div>
+      <button
+        onClick={() => setShowQrisModal(false)}
+        className="btn btn-secondary"
+        style={{
+          width: '100%',
+          borderRadius: '50px',
+          marginTop: '0.5rem'
+        }}
+      >
+        Batal
+      </button>
 
-            <button onClick={() => setShowSuccessModal(false)} className="btn btn-primary" style={{ width: '100%', borderRadius: '50px' }}>
-              Tutup &amp; Kembali
+    </div>
+  </div>
+)}
+
+{/* MODAL UPLOAD BUKTI TRANSFER */}
+{showProofModal && (
+  <div
+    className="modal-overlay"
+    onClick={() => {
+      if (!isSubmitting) {
+        setShowProofModal(false);
+      }
+    }}
+  >
+    <div
+      className="modal-container"
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        maxWidth: '470px',
+        width: '95%',
+        padding: '2rem'
+      }}
+    >
+      <div style={{ textAlign: 'center' }}>
+
+        <div
+          style={{
+            background: '#eff6ff',
+            color: '#2563eb',
+            width: '60px',
+            height: '60px',
+            borderRadius: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 1rem'
+          }}
+        >
+          <FileCheck size={30} />
+        </div>
+
+        <h3
+          style={{
+            fontSize: '1.3rem',
+            fontWeight: 800,
+            color: '#0b1f5c',
+            marginBottom: '0.5rem'
+          }}
+        >
+          Upload Bukti Pembayaran
+        </h3>
+
+        <p
+          style={{
+            color: '#64748b',
+            fontSize: '0.85rem',
+            marginBottom: '1.25rem'
+          }}
+        >
+          Unggah screenshot atau foto transaksi
+          yang sudah berhasil dilakukan.
+        </p>
+
+      </div>
+
+      {/* DETAIL NOMINAL */}
+      <div
+        style={{
+          background: '#eff6ff',
+          padding: '1rem',
+          borderRadius: '12px',
+          marginBottom: '1.25rem'
+        }}
+      >
+        <span
+          style={{
+            color: '#64748b',
+            fontSize: '0.8rem'
+          }}
+        >
+          Nominal yang harus dibayarkan
+        </span>
+
+        <strong
+          style={{
+            display: 'block',
+            fontSize: '1.4rem',
+            color: '#1d4ed8'
+          }}
+        >
+          Rp {getFinalAmount()}
+        </strong>
+      </div>
+
+      <form onSubmit={handleProofSubmit}>
+
+        <label
+          htmlFor="donation-proof-file"
+          style={{
+            display: 'block',
+            border: '2px dashed #93c5fd',
+            background: '#f8fbff',
+            padding: '1.5rem',
+            textAlign: 'center',
+            borderRadius: '12px',
+            cursor: 'pointer'
+          }}
+        >
+          <FileCheck
+            size={32}
+            color="#2563eb"
+            style={{ margin: '0 auto 0.5rem' }}
+          />
+
+          <strong
+            style={{
+              display: 'block',
+              color: '#1e3a8a',
+              fontSize: '0.9rem'
+            }}
+          >
+            Pilih Bukti Transfer
+          </strong>
+
+          <span
+            style={{
+              display: 'block',
+              color: '#64748b',
+              fontSize: '0.75rem',
+              marginTop: '0.4rem'
+            }}
+          >
+            JPG, PNG atau PDF — maksimal 10 MB
+          </span>
+
+          <input
+            id="donation-proof-file"
+            type="file"
+            accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
+            disabled={isSubmitting}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+
+              setProofFile(file || null);
+              setDonationError('');
+            }}
+            style={{ display: 'none' }}
+          />
+        </label>
+
+        {proofFile && (
+          <div
+            style={{
+              background: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              padding: '0.85rem',
+              borderRadius: '9px',
+              marginTop: '0.85rem',
+              fontSize: '0.8rem',
+              color: '#166534',
+              overflowWrap: 'anywhere'
+            }}
+          >
+            <CheckCircle2
+              size={16}
+              style={{
+                display: 'inline',
+                marginRight: '0.35rem'
+              }}
+            />
+
+            {proofFile.name}
+
+            <button
+              type="button"
+              onClick={() => setProofFile(null)}
+              disabled={isSubmitting}
+              style={{
+                float: 'right',
+                border: 'none',
+                background: 'transparent',
+                color: '#dc2626',
+                cursor: 'pointer',
+                fontWeight: 700
+              }}
+            >
+              Hapus
             </button>
           </div>
-        </div>
-      )}
+        )}
 
+        {donationError && (
+          <div
+            style={{
+              marginTop: '1rem',
+              padding: '0.85rem',
+              borderRadius: '9px',
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              color: '#b91c1c',
+              fontSize: '0.8rem'
+            }}
+          >
+            {donationError}
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={!proofFile || isSubmitting}
+          className="btn btn-primary"
+          style={{
+            width: '100%',
+            marginTop: '1.25rem',
+            padding: '0.9rem',
+            borderRadius: '50px',
+            opacity: !proofFile || isSubmitting ? 0.6 : 1
+          }}
+        >
+          {isSubmitting
+            ? 'Mengunggah dan Mengirim Transaksi...'
+            : 'Kirim Bukti Pembayaran'}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setShowProofModal(false);
+            setShowQrisModal(true);
+          }}
+          disabled={isSubmitting}
+          className="btn btn-secondary"
+          style={{
+            width: '100%',
+            marginTop: '0.5rem',
+            borderRadius: '50px'
+          }}
+        >
+          Kembali ke QRIS
+        </button>
+
+      </form>
+    </div>
+  </div>
+)}
+
+{/* MODAL 2: DONATION SUBMISSION SUCCESS */}
+{showSuccessModal && (
+  <div
+    className="modal-overlay"
+    onClick={() => setShowSuccessModal(false)}
+  >
+    <div
+      className="modal-container"
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        maxWidth: '440px',
+        textAlign: 'center',
+        padding: '2rem'
+      }}
+    >
+      {/* SUCCESS ICON */}
+      <div
+        style={{
+          background: '#dcfce7',
+          color: '#15803d',
+          width: '64px',
+          height: '64px',
+          borderRadius: '50%',
+          margin: '0 auto 1.25rem auto',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        <CheckCircle2 size={36} />
+      </div>
+
+      {/* TITLE */}
+      <h3
+        style={{
+          fontSize: '1.3rem',
+          fontWeight: 800,
+          color: '#0b1f5c',
+          margin: '0 0 0.5rem 0'
+        }}
+      >
+        Bukti Donasi Berhasil Dikirim!
+      </h3>
+
+      {/* DESCRIPTION */}
+      <p
+        style={{
+          fontSize: '0.85rem',
+          color: '#64748b',
+          margin: '0 0 1.25rem 0',
+          lineHeight: 1.6
+        }}
+      >
+        Terima kasih telah berdonasi sebesar{' '}
+        <strong>
+          Rp {getFinalAmount()}
+        </strong>{' '}
+        untuk{' '}
+        <strong>{selectedProgram}</strong>.
+
+        <br />
+
+        Bukti transfer Anda telah dikirim ke sistem
+        HaloKids dan sedang menunggu pemeriksaan
+        AI serta persetujuan Admin Dinsos.
+      </p>
+
+      {/* TRANSACTION DETAIL */}
+      <div
+        style={{
+          background: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          padding: '1rem',
+          borderRadius: '12px',
+          fontSize: '0.8rem',
+          color: '#1e293b',
+          marginBottom: '1.5rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.65rem',
+          textAlign: 'left'
+        }}
+      >
+        {/* TRANSACTION ID */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: '1rem'
+          }}
+        >
+          <span style={{ color: '#64748b' }}>
+            No. Referensi:
+          </span>
+
+          <strong style={{ color: '#0b1f5c' }}>
+            {createdDonation?.id
+              ? `DNS-DON-${createdDonation.id}`
+              : 'Tidak tersedia'}
+          </strong>
+        </div>
+
+        {/* DONOR */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: '1rem'
+          }}
+        >
+          <span style={{ color: '#64748b' }}>
+            Donatur:
+          </span>
+
+          <strong style={{ textAlign: 'right' }}>
+            {donorName ||
+              currentUser?.name ||
+              'Hamba Allah (Anonim)'}
+          </strong>
+        </div>
+
+        {/* DONATION AMOUNT */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: '1rem'
+          }}
+        >
+          <span style={{ color: '#64748b' }}>
+            Nominal Donasi:
+          </span>
+
+          <strong style={{ color: '#15803d' }}>
+            Rp {getFinalAmount()}
+          </strong>
+        </div>
+
+        {/* PAYMENT METHOD */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: '1rem'
+          }}
+        >
+          <span style={{ color: '#64748b' }}>
+            Metode Pembayaran:
+          </span>
+
+          <strong>QRIS</strong>
+        </div>
+
+        {/* TRANSACTION STATUS */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '1rem'
+          }}
+        >
+          <span style={{ color: '#64748b' }}>
+            Status Transaksi:
+          </span>
+
+          <span
+            style={{
+              background: '#fef3c7',
+              color: '#b45309',
+              fontWeight: 800,
+              fontSize: '0.7rem',
+              padding: '0.3rem 0.65rem',
+              borderRadius: '50px',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            MENUNGGU VERIFIKASI
+          </span>
+        </div>
+      </div>
+
+      {/* INFORMATION */}
+      <div
+        style={{
+          background: '#eff6ff',
+          border: '1px solid #bfdbfe',
+          padding: '0.85rem',
+          borderRadius: '10px',
+          textAlign: 'left',
+          marginBottom: '1.25rem'
+        }}
+      >
+        <strong
+          style={{
+            color: '#1d4ed8',
+            fontSize: '0.8rem'
+          }}
+        >
+          Informasi Verifikasi
+        </strong>
+
+        <p
+          style={{
+            color: '#475569',
+            fontSize: '0.75rem',
+            lineHeight: 1.5,
+            margin: '0.35rem 0 0'
+          }}
+        >
+          Sistem AI akan membantu membaca bukti
+          pembayaran dan mencocokkan nominal donasi.
+          Keputusan akhir tetap dilakukan oleh
+          Admin Dinsos.
+        </p>
+      </div>
+
+      {/* CLOSE BUTTON */}
+      <button
+        onClick={() => setShowSuccessModal(false)}
+        className="btn btn-primary"
+        style={{
+          width: '100%',
+          borderRadius: '50px',
+          padding: '0.85rem',
+          fontWeight: 700
+        }}
+      >
+        Tutup &amp; Kembali
+      </button>
+    </div>
+  </div>
+)}
       {/* MODAL 3: PACKAGE SHIPMENT RECEIPT */}
       {showPackageReceiptModal && (
         <div className="modal-overlay" onClick={() => setShowPackageReceiptModal(false)}>

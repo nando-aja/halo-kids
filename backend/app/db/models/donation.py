@@ -7,6 +7,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    JSON,
 )
 from sqlalchemy.sql import func
 
@@ -37,25 +38,53 @@ class Donasi(Base):
         nullable=False,
     )
 
-    # Untuk donasi uang, nilai nominal harus > 0.
-    # Untuk donasi barang, backend menyimpan 0 agar schema database lama
-    # tetap kompatibel tanpa membuat nominal palsu.
-    jumlah_nominal = Column(Numeric(15, 2), nullable=False, default=0)
+    jumlah_nominal = Column(
+        Numeric(15, 2),
+        nullable=False,
+        default=0,
+    )
 
-    # Tambahan untuk melengkapi alur donasi barang tanpa menambah tabel baru.
     id_wishlist = Column(
         Integer,
-        ForeignKey("wishlist_panti.id", name="fk_donasi_id_wishlist"),
+        ForeignKey(
+            "wishlist_panti.id",
+            name="fk_donasi_id_wishlist",
+        ),
         nullable=True,
         index=True,
     )
-    nama_barang = Column(String(150), nullable=True)
-    jumlah_barang = Column(Integer, nullable=True)
-    satuan_barang = Column(String(30), nullable=True)
 
-    bukti_transfer = Column(String(255), nullable=True)
+    nama_barang = Column(
+        String(150),
+        nullable=True,
+    )
 
-    estimasi_waktu_antar = Column(Date, nullable=True)
+    jumlah_barang = Column(
+        Integer,
+        nullable=True,
+    )
+
+    satuan_barang = Column(
+        String(30),
+        nullable=True,
+    )
+
+    # Lokasi bukti transfer di Supabase Storage
+    bukti_transfer = Column(
+        String(255),
+        nullable=True,
+    )
+
+    # Hasil analisis OCR/AI disimpan sebagai JSON
+    hasil_analisis_ai = Column(
+        JSON,
+        nullable=True,
+    )
+
+    estimasi_waktu_antar = Column(
+        Date,
+        nullable=True,
+    )
 
     status_verifikasi = Column(
         Enum(

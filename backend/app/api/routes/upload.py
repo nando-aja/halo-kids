@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from app.api.deps import require_masyarakat
 from app.db.models.user import User
 from app.schemas.adoption import AdditionalDocumentType
-from app.services.ai_service import analyze_adoption_documents, analyze_transfer_proof
+from app.services.ai_service import analyze_adoption_documents
 from app.services.storage import save_upload_file
 
 
@@ -87,18 +87,17 @@ def upload_bukti_transfer(
     file: UploadFile = File(...),
     current_user: User = Depends(require_masyarakat),
 ):
+
     path = save_upload_file(
         file,
         "bukti_transfer",
+        prefix=f"user-{current_user.id}-",
     )
-
-    ai_result = analyze_transfer_proof(path)
 
     return {
         "message": "Bukti transfer berhasil diupload",
         "id_user": current_user.id,
         "bukti_transfer": path,
-        "ai_preview": ai_result,
     }
 
 

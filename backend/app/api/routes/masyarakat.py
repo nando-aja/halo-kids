@@ -316,55 +316,175 @@ def create_donation(
     current_user: User = Depends(require_masyarakat),
     db: Session = Depends(get_db),
 ):
+
+    # ==========================================
+    # 1. VALIDASI PANTI
+    # ==========================================
+
     panti = (
         db.query(PantiAsuhan)
         .filter(PantiAsuhan.id == data.id_panti)
         .first()
     )
-    if panti is None:
-        raise HTTPException(404, "Panti tidak ditemukan")
 
-    item = Donasi(
-        id_user=current_user.id,
-        id_panti=data.id_panti,
-        jenis_donasi=data.jenis_donasi,
-        jumlah_nominal=Decimal("0") if data.jenis_donasi == "barang" else data.jumlah_nominal,
-        bukti_transfer=None,
-        estimasi_waktu_antar=data.estimasi_waktu_antar,
-        id_wishlist=None,
-        nama_barang=None,
-        jumlah_barang=None,
-        satuan_barang=None,
-        status_verifikasi="menunggu",
+    if panti is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Panti tidak ditemukan",
+        )
+
+
+    # ==========================================
+    # 2. PERSIAPAN DATA DONASI
+    # ==========================================
+
+    proof_path = None
+    proof_result = None
+    needs_manual_check = False
+
+    id_wishlist = None
+    nama_barang = None
+    jumlah_barang = None
+    satuan_barang = None
+
+    nominal = (
+        Decimal("0")
+        if data.jenis_donasi == "barang"
+        else data.jumlah_nominal
     )
 
+
+    # ==========================================
+    # 3. DONASI UANG
+    # ==========================================
+
     if data.jenis_donasi == "uang":
-        if not data.bukti_transfer:
-            data.bukti_transfer = "storage/bukti_transfer/transfer_sample.jpg"
 
-        if not data.bukti_transfer.startswith("storage/bukti_transfer/"):
-            data.bukti_transfer = f"storage/bukti_transfer/{data.bukti_transfer.split('/')[-1]}"
+        if (
+            data.jumlah_nominal is None
+            or data.jumlah_nominal <= 0
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Nominal donasi harus lebih dari 0",
+            )
 
-        stored_file_exists(data.bukti_transfer)
-        item.bukti_transfer = data.bukti_transfer
+        proof_path = (
+            str(data.bukti_transfer or "")
+            .replace("\\", "/")
+            .strip()
+        )
+
+        # Bukti transfer wajib ada
+        if not proof_path:
+            raise HTTPException(
+                status_code=422,
+                detail="Bukti transfer wajib diunggah",
+            )
+
+        # Validasi kepemilikan file berdasarkan prefix user
+        required_prefix = (
+            f"storage/bukti_transfer/user-{current_user.id}-"
+        )
+
+        if not proof_path.startswith(required_prefix):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Bukti transfer tidak berasal dari "
+                    "unggahan akun yang sedang login"
+                ),
+            )
+
+        # Pastikan file benar-benar tersedia
+        if not stored_file_exists(proof_path):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Bukti transfer tidak ditemukan "
+                    "di Supabase Storage. Silakan unggah ulang."
+                ),
+            )
+
+        # ======================================
+        # 4. ANALISIS AI / OCR
+        # ======================================
 
         try:
+
             proof_result = run_transfer_proof_analysis(
-                data.bukti_transfer,
+                proof_path,
                 expected_amount=data.jumlah_nominal,
             )
-            needs_manual_check = bool(proof_result["requires_manual_review"])
+
+            nominal_match = (
+                proof_result.get(
+                    "nominal_donasi_cocok"
+                ) is True
+            )
+
+            requires_manual_review = bool(
+                proof_result.get(
+                    "requires_manual_review",
+                    True,
+                )
+            )
+
+            needs_manual_check = (
+                not nominal_match
+                or requires_manual_review
+            )
+
+            proof_result["rekomendasi_ai"] = (
+                "direkomendasikan_untuk_disetujui"
+                if not needs_manual_check
+                else "perlu_pemeriksaan_manual"
+            )
+
+            proof_result["keputusan_final"] = (
+                "menunggu_persetujuan_dinsos"
+            )
+
         except Exception:
+
+            # Jika OCR gagal, transaksi tidak otomatis ditolak.
+            # Transaksi tetap menunggu pemeriksaan manusia.
+
             needs_manual_check = True
 
-        item.nama_barang = None
+            proof_result = {
+                "agent": "HaloKids Donation Verification Agent",
+                "document_type": "bukti_transfer",
+                "nominal_donasi_cocok": None,
+                "requires_manual_review": True,
+                "rekomendasi_ai": "perlu_pemeriksaan_manual",
+                "keputusan_final": "menunggu_persetujuan_dinsos",
+                "anomalies": [
+                    "Analisis OCR gagal dijalankan. "
+                    "Bukti perlu diperiksa manual oleh Dinsos."
+                ],
+            }
+
+
+    # ==========================================
+    # 5. DONASI BARANG
+    # ==========================================
 
     else:
+
         if data.bukti_transfer:
-            raise HTTPException(422, "Bukti transfer tidak digunakan untuk donasi barang")
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Bukti transfer tidak digunakan "
+                    "untuk donasi barang"
+                ),
+            )
 
         wishlist = None
+
         if data.id_wishlist is not None:
+
             wishlist = (
                 db.query(WishlistPanti)
                 .filter(
@@ -373,62 +493,135 @@ def create_donation(
                 )
                 .first()
             )
+
             if wishlist is None:
-                raise HTTPException(422, "Wishlist tidak ditemukan untuk panti yang dipilih")
+                raise HTTPException(
+                    status_code=422,
+                    detail="Wishlist tidak ditemukan untuk panti tersebut",
+                )
 
-        item.id_wishlist = data.id_wishlist
-        item.nama_barang = data.nama_barang or (wishlist.nama_barang if wishlist else None)
-        item.jumlah_barang = data.jumlah_barang
-        item.satuan_barang = data.satuan_barang
-        item.jumlah_nominal = Decimal("0")
-        needs_manual_check = False
-
-        # Jika donor memilih wishlist, jumlah yang didonasikan tidak boleh melebihi
-        # kebutuhan yang tersisa. Pengelola tetap memverifikasi pemenuhan final.
         if wishlist is not None:
-            remaining = max(wishlist.jumlah_kebutuhan - wishlist.jumlah_terpenuhi, 0)
-            if data.jumlah_barang is None:
-                raise HTTPException(422, "jumlah_barang wajib diisi")
+
+            remaining = max(
+                wishlist.jumlah_kebutuhan
+                - wishlist.jumlah_terpenuhi,
+                0,
+            )
+
             if data.jumlah_barang > remaining:
-                raise HTTPException(422, f"Jumlah donasi melebihi sisa kebutuhan wishlist ({remaining})")
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"Jumlah donasi melebihi "
+                        f"sisa kebutuhan wishlist ({remaining})"
+                    ),
+                )
+
+        id_wishlist = data.id_wishlist
+
+        nama_barang = (
+            data.nama_barang
+            or (wishlist.nama_barang if wishlist else None)
+        )
+
+        jumlah_barang = data.jumlah_barang
+
+        satuan_barang = data.satuan_barang
+
+
+    # ==========================================
+    # 6. SIMPAN TRANSAKSI
+    # ==========================================
+
+    item = Donasi(
+        id_user=current_user.id,
+        id_panti=panti.id,
+
+        jenis_donasi=data.jenis_donasi,
+
+        jumlah_nominal=nominal,
+
+        id_wishlist=id_wishlist,
+        nama_barang=nama_barang,
+        jumlah_barang=jumlah_barang,
+        satuan_barang=satuan_barang,
+
+        bukti_transfer=proof_path,
+
+        hasil_analisis_ai=proof_result,
+
+        estimasi_waktu_antar=data.estimasi_waktu_antar,
+
+        # Tidak pernah disetujui otomatis oleh AI
+        status_verifikasi="menunggu",
+    )
 
     db.add(item)
 
-    panti_message = f"Donasi baru untuk panti #{panti.id} menunggu verifikasi."
-    panti_manual_message = (
-        f"Donasi #{item.id} untuk panti #{panti.id} perlu dicek manual."
-        if needs_manual_check
-        else None
-    )
-    admin_message = (
-        f"Donasi #{item.id} perlu dicek manual untuk memastikan nominal transfer sesuai."
-        if needs_manual_check
-        else f"Donasi #{item.id} baru masuk dan menunggu verifikasi."
-    )
+    # ID harus tersedia sebelum membuat notifikasi
+    db.flush()
+
+
+    # ==========================================
+    # 7. NOTIFIKASI PENGELOLA PANTI
+    # ==========================================
 
     if panti.id_admin_pengelola:
+
         create_notification(
             db,
             panti.id_admin_pengelola,
             "Donasi Baru",
-            panti_message,
+            f"Donasi #{item.id} baru masuk "
+            f"untuk panti #{panti.id}.",
         )
-        if panti_manual_message:
-            create_notification(
-                db,
-                panti.id_admin_pengelola,
-                "Cek Manual Donasi",
-                panti_manual_message,
-            )
 
-    admin_users = db.query(User).filter(User.peran == "admin").all()
-    for admin in admin_users:
-        create_notification(db, admin.id, "Donasi Baru", admin_message)
+
+    # ==========================================
+    # 8. NOTIFIKASI ADMIN DINSOS
+    # ==========================================
+
+    if needs_manual_check:
+
+        admin_message = (
+            f"Donasi #{item.id} membutuhkan "
+            "pemeriksaan manual. AI menemukan "
+            "ketidaksesuaian atau hasil OCR belum meyakinkan."
+        )
+
+    else:
+
+        admin_message = (
+            f"Donasi #{item.id} berhasil dianalisis AI. "
+            "Nominal terdeteksi sesuai dan menunggu "
+            "persetujuan Admin Dinsos."
+        )
+
+    admin_users = (
+        db.query(User)
+        .filter(User.peran == "admin")
+        .all()
+    )
+
+    for admin_user in admin_users:
+
+        create_notification(
+            db,
+            admin_user.id,
+            "Donasi Baru",
+            admin_message,
+        )
+
+
+    # ==========================================
+    # 9. COMMIT DATABASE
+    # ==========================================
 
     db.commit()
-    db.refresh(item)
-    return item
 
+    db.refresh(item)
+
+    return item
 
 @router.get(
     "/donasi",

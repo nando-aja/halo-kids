@@ -35,7 +35,7 @@ import {
   Gift
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { AdminDocumentReview } from '../components/AiVerification';
+import { AdminDocumentReview, DonationProofReview } from '../components/AiVerification';
 import {
   pantiService,
   donasiService,
@@ -279,6 +279,8 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
 
   // Additional End-to-End Live States
   const [adminDonations, setAdminDonations] = useState([]);
+  const [selectedDonationReview, setSelectedDonationReview] = useState(null);
+  const [donationAiLoading, setDonationAiLoading] = useState({});
   const [pantiAdoptions, setPantiAdoptions] = useState([]);
   const [actionLoading, setActionLoading] = useState({});
 
@@ -505,21 +507,35 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
         const rawDonations = await donasiService.getAdminDonations();
         if (!active || !Array.isArray(rawDonations)) return;
 
-        setAdminDonations(rawDonations.map((d) => ({
-          id: `DNS-${d.id}`,
-          rawId: d.id,
-          date: d.tanggal_donasi
-            ? new Date(d.tanggal_donasi).toLocaleDateString('id-ID')
-            : 'Hari ini',
-          donor: d.id_user ? `Donatur #${d.id_user}` : 'Warga Anonim',
-          panti: d.panti_asuhan?.nama_panti || `LKSA Panti #${d.id_panti || 1}`,
-          jenis: d.jenis_donasi,
-          amount: d.jenis_donasi === 'uang'
-            ? `Rp ${Number(d.jumlah_nominal).toLocaleString('id-ID')}`
-            : `${d.nama_barang || 'Paket Logistik'} (${d.jumlah_barang || 1} ${d.satuan_barang || 'Paket'})`,
-          bukti_transfer: d.bukti_transfer,
-          status: d.status_verifikasi,
-        })));
+       setAdminDonations(rawDonations.map((d) => ({
+  id: `DNS-${d.id}`,
+
+  rawId: d.id,
+
+  date: d.tanggal_donasi
+    ? new Date(d.tanggal_donasi).toLocaleDateString('id-ID')
+    : 'Tanggal tidak tersedia',
+
+  donor: d.id_user
+    ? `Donatur #${d.id_user}`
+    : 'Warga Anonim',
+
+  panti: d.panti_asuhan?.nama_panti ||
+    `LKSA Panti #${d.id_panti || 1}`,
+
+  jenis: d.jenis_donasi,
+
+  amount: d.jenis_donasi === 'uang'
+    ? `Rp ${Number(d.jumlah_nominal).toLocaleString('id-ID')}`
+    : `${d.nama_barang || 'Paket Logistik'} (${d.jumlah_barang || 1} ${d.satuan_barang || 'Paket'})`,
+
+  bukti_transfer: d.bukti_transfer,
+
+  hasil_analisis_ai: d.hasil_analisis_ai || null,
+
+  status: d.status_verifikasi,
+
+})));
       } catch (err) {
         if (active) {
           console.error(
@@ -531,7 +547,25 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
     };
 
     syncAdminDonations();
-    return () => { active = false; };
+
+// Update jika ada transaksi baru
+const handleDonationsUpdated = () => {
+  syncAdminDonations();
+};
+
+window.addEventListener(
+  'halokids:data_updated',
+  handleDonationsUpdated
+);
+
+return () => {
+  active = false;
+
+  window.removeEventListener(
+    'halokids:data_updated',
+    handleDonationsUpdated
+  );
+};
   }, [dashboardRoleMode, superAdminTab, currentUser]);
 
   // Memuat laporan pengaduan ketika menu pengaduan dibuka.
@@ -772,21 +806,144 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
     }
   };
 
-  const handleVerifyDonationAdmin = async (donationId, newStatus) => {
-    if (actionLoading[donationId]) return;
-    setActionLoading(prev => ({ ...prev, [donationId]: true }));
-    try {
-      await donasiService.updateDonasiStatus(donationId, newStatus);
-      setAdminDonations(prev => prev.map(d => d.rawId === donationId ? { ...d, status: newStatus } : d));
-      showToast(`Donasi #${donationId} berhasil di-${newStatus === 'terverifikasi' ? 'setujui' : 'tolak'}!`);
-      if (newStatus === 'terverifikasi') triggerConfetti();
-    } catch (err) {
-      showToast(err.friendlyMessage || `Gagal memperbarui status donasi #${donationId}`);
-    } finally {
-      setActionLoading(prev => ({ ...prev, [donationId]: false }));
-    }
-  };
+ const handleVerifyDonationAdmin = async (
+  donationId,
+  newStatus
+) => {
 
+  if (actionLoading[donationId]) return;
+
+  setActionLoading(prev => ({
+    ...prev,
+    [donationId]: true
+  }));
+
+  try {
+
+    const result = await donasiService.updateDonasiStatus(
+      donationId,
+      newStatus
+    );
+
+    setAdminDonations(prev =>
+      prev.map(d =>
+        d.rawId === donationId
+          ? {
+              ...d,
+              status: result.status_verifikasi
+                || newStatus
+            }
+          : d
+      )
+    );
+
+    setSelectedDonationReview(prev =>
+      prev && prev.rawId === donationId
+        ? {
+            ...prev,
+            status: result.status_verifikasi
+              || newStatus
+          }
+        : prev
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('halokids:data_updated', {
+        detail: {
+          type: 'donasi'
+        }
+      })
+    );
+
+    showToast(
+      newStatus === 'terverifikasi'
+        ? `Donasi #${donationId} berhasil disetujui Dinsos.`
+        : `Donasi #${donationId} ditolak Dinsos.`
+    );
+
+    if (newStatus === 'terverifikasi') {
+      triggerConfetti();
+    }
+
+  } catch (err) {
+
+    showToast(
+      err?.friendlyMessage ||
+      `Gagal memperbarui donasi #${donationId}.`
+    );
+
+  } finally {
+
+    setActionLoading(prev => ({
+      ...prev,
+      [donationId]: false
+    }));
+
+  }
+};
+
+const handleAnalyzeDonationAdmin = async (donationId) => {
+
+  if (donationAiLoading[donationId]) return;
+
+  setDonationAiLoading(prev => ({
+    ...prev,
+    [donationId]: true
+  }));
+
+  try {
+
+    const response = await donasiService.analyzeProofAI(
+      donationId
+    );
+
+    const aiResult =
+      response?.hasil_analisis_ai || response;
+
+    // Update daftar donasi
+    setAdminDonations(prev =>
+      prev.map(d =>
+        d.rawId === donationId
+          ? {
+              ...d,
+              hasil_analisis_ai: aiResult
+            }
+          : d
+      )
+    );
+
+    // Update modal yang sedang terbuka
+    setSelectedDonationReview(prev =>
+      prev && prev.rawId === donationId
+        ? {
+            ...prev,
+            hasil_analisis_ai: aiResult
+          }
+        : prev
+    );
+
+    showToast(
+      response?.message ||
+      'Analisis bukti transfer selesai.'
+    );
+
+  } catch (err) {
+
+    showToast(
+      err?.friendlyMessage ||
+      err?.message ||
+      'Analisis AI gagal dijalankan.'
+    );
+
+  } finally {
+
+    setDonationAiLoading(prev => ({
+      ...prev,
+      [donationId]: false
+    }));
+
+  }
+};
   const handleVerifyDonationPanti = async (donationId, newStatus) => {
     if (actionLoading[donationId]) return;
     setActionLoading(prev => ({ ...prev, [donationId]: true }));
@@ -2213,70 +2370,270 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
                       </p>
                     ) : (
                       <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                          <thead>
-                            <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
-                              <th style={{ padding: '0.75rem' }}>ID &amp; Tanggal</th>
-                              <th style={{ padding: '0.75rem' }}>Donatur</th>
-                              <th style={{ padding: '0.75rem' }}>Panti Tujuan</th>
-                              <th style={{ padding: '0.75rem' }}>Jenis &amp; Jumlah / Paket</th>
-                              <th style={{ padding: '0.75rem' }}>Status</th>
-                              <th style={{ padding: '0.75rem', textAlign: 'right' }}>Aksi Approval</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {adminDonations.map((d) => (
-                              <tr key={d.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                <td style={{ padding: '0.75rem' }}>
-                                  <strong style={{ color: '#0b1f5c', display: 'block' }}>{d.id}</strong>
-                                  <span style={{ fontSize: '0.725rem', color: '#64748b' }}>{d.date}</span>
-                                </td>
-                                <td style={{ padding: '0.75rem' }}>{d.donor}</td>
-                                <td style={{ padding: '0.75rem', fontWeight: 600 }}>{d.panti}</td>
-                                <td style={{ padding: '0.75rem', color: d.jenis === 'uang' ? '#15803d' : '#0284c7', fontWeight: 700 }}>
-                                  {d.amount}
-                                </td>
-                                <td style={{ padding: '0.75rem' }}>
-                                  <span style={{
-                                    background: d.status === 'terverifikasi' ? '#dcfce7' : d.status === 'ditolak' ? '#fee2e2' : '#fef3c7',
-                                    color: d.status === 'terverifikasi' ? '#15803d' : d.status === 'ditolak' ? '#dc2626' : '#b45309',
-                                    padding: '0.2rem 0.55rem',
-                                    borderRadius: '50px',
-                                    fontSize: '0.725rem',
-                                    fontWeight: 800
-                                  }}>
-                                    {d.status === 'terverifikasi' ? 'Terverifikasi' : d.status === 'ditolak' ? 'Ditolak' : 'Menunggu'}
-                                  </span>
-                                </td>
-                                <td style={{ padding: '0.75rem', textAlign: 'right' }}>
-                                  {d.status === 'menunggu' ? (
-                                    <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
-                                      <button
-                                        onClick={() => handleVerifyDonationAdmin(d.rawId, 'terverifikasi')}
-                                        disabled={actionLoading[d.rawId]}
-                                        style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', padding: '0.35rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
-                                      >
-                                        {actionLoading[d.rawId] ? '...' : '✔ Setujui'}
-                                      </button>
-                                      <button
-                                        onClick={() => handleVerifyDonationAdmin(d.rawId, 'ditolak')}
-                                        disabled={actionLoading[d.rawId]}
-                                        style={{ background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '6px', padding: '0.35rem 0.65rem', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
-                                      >
-                                        Tolak
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Selesai Diproses</span>
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+<table
+  style={{
+    width: '100%',
+    borderCollapse: 'collapse',
+    fontSize: '0.85rem'
+  }}
+>
+  <thead>
+    <tr
+      style={{
+        background: '#f8fafc',
+        borderBottom: '1px solid #e2e8f0',
+        textAlign: 'left'
+      }}
+    >
+      <th style={{ padding: '0.75rem' }}>
+        ID & Tanggal
+      </th>
+
+      <th style={{ padding: '0.75rem' }}>
+        Donatur
+      </th>
+
+      <th style={{ padding: '0.75rem' }}>
+        Panti Tujuan
+      </th>
+
+      <th style={{ padding: '0.75rem' }}>
+        Nominal / Barang
+      </th>
+
+      <th style={{ padding: '0.75rem' }}>
+        Bukti
+      </th>
+
+      <th style={{ padding: '0.75rem' }}>
+        Analisis AI
+      </th>
+
+      <th style={{ padding: '0.75rem' }}>
+        Status
+      </th>
+
+      <th style={{ padding: '0.75rem' }}>
+        Tindakan
+      </th>
+    </tr>
+  </thead>
+
+  <tbody>
+    {adminDonations.map((d) => {
+
+      const aiMatch =
+        d.hasil_analisis_ai?.nominal_donasi_cocok;
+
+      return (
+        <tr
+          key={d.rawId}
+          style={{
+            borderBottom: '1px solid #f1f5f9'
+          }}
+        >
+
+          <td style={{ padding: '0.75rem' }}>
+            <strong style={{ color: '#0b1f5c' }}>
+              {d.id}
+            </strong>
+
+            <span
+              style={{
+                display: 'block',
+                fontSize: '0.725rem',
+                color: '#64748b'
+              }}
+            >
+              {d.date}
+            </span>
+          </td>
+
+
+          <td style={{ padding: '0.75rem' }}>
+            {d.donor}
+          </td>
+
+
+          <td style={{ padding: '0.75rem' }}>
+            {d.panti}
+          </td>
+
+
+          <td
+            style={{
+              padding: '0.75rem',
+              color: d.jenis === 'uang'
+                ? '#15803d'
+                : '#0284c7',
+              fontWeight: 700
+            }}
+          >
+            {d.amount}
+          </td>
+
+
+          {/* STATUS BUKTI */}
+          <td style={{ padding: '0.75rem' }}>
+            {d.bukti_transfer ? (
+              <span style={{ color: '#15803d' }}>
+                Tersedia
+              </span>
+            ) : (
+              <span style={{ color: '#94a3b8' }}>
+                Tidak ada
+              </span>
+            )}
+          </td>
+
+
+          {/* STATUS AI */}
+          <td style={{ padding: '0.75rem' }}>
+            {d.jenis !== 'uang' ? (
+              <span style={{ color: '#64748b' }}>
+                Tidak diperlukan
+              </span>
+            ) : aiMatch === true ? (
+              <span
+                style={{
+                  color: '#15803d',
+                  fontWeight: 700
+                }}
+              >
+                ✓ Nominal cocok
+              </span>
+            ) : aiMatch === false ? (
+              <span
+                style={{
+                  color: '#dc2626',
+                  fontWeight: 700
+                }}
+              >
+                ⚠ Tidak cocok
+              </span>
+            ) : (
+              <span style={{ color: '#d97706' }}>
+                Belum dianalisis
+              </span>
+            )}
+          </td>
+
+
+          {/* STATUS TRANSAKSI */}
+          <td style={{ padding: '0.75rem' }}>
+            <span
+              style={{
+                background:
+                  d.status === 'terverifikasi'
+                    ? '#dcfce7'
+                    : d.status === 'ditolak'
+                      ? '#fee2e2'
+                      : '#fef3c7',
+
+                color:
+                  d.status === 'terverifikasi'
+                    ? '#15803d'
+                    : d.status === 'ditolak'
+                      ? '#dc2626'
+                      : '#b45309',
+
+                borderRadius: '50px',
+                padding: '0.25rem 0.6rem',
+                fontSize: '0.7rem',
+                fontWeight: 800
+              }}
+            >
+              {d.status === 'terverifikasi'
+                ? 'Terverifikasi'
+                : d.status === 'ditolak'
+                  ? 'Ditolak'
+                  : 'Menunggu'}
+            </span>
+          </td>
+
+
+          {/* TOMBOL DETAIL */}
+          <td style={{ padding: '0.75rem' }}>
+            <button
+              onClick={() => setSelectedDonationReview(d)}
+              style={{
+                border: 'none',
+                background: '#eff6ff',
+                color: '#1d4ed8',
+                padding: '0.5rem 0.75rem',
+                borderRadius: '8px',
+                fontWeight: 700,
+                fontSize: '0.75rem',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <Eye
+                size={14}
+                style={{
+                  display: 'inline',
+                  marginRight: '0.3rem'
+                }}
+              />
+
+              Tinjau Bukti
+            </button>
+          </td>
+
+        </tr>
+      );
+    })}
+  </tbody>
+</table>
                       </div>
                     )}
                   </div>
+                  {/* MODAL REVIEW BUKTI DONASI */}
+{selectedDonationReview && (
+  <DonationProofReview
+    donation={selectedDonationReview}
+
+    onClose={() => {
+      setSelectedDonationReview(null);
+    }}
+
+    onAnalyze={() => {
+      handleAnalyzeDonationAdmin(
+        selectedDonationReview.rawId
+      );
+    }}
+
+    analyzing={
+      Boolean(
+        donationAiLoading[
+          selectedDonationReview.rawId
+        ]
+      )
+    }
+
+    onApprove={() => {
+      handleVerifyDonationAdmin(
+        selectedDonationReview.rawId,
+        'terverifikasi'
+      );
+    }}
+
+    onReject={() => {
+      handleVerifyDonationAdmin(
+        selectedDonationReview.rawId,
+        'ditolak'
+      );
+    }}
+
+    saving={
+      Boolean(
+        actionLoading[
+          selectedDonationReview.rawId
+        ]
+      )
+    }
+  />
+)}
 
                   {/* Regional Aggregation Table */}
                   <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '1.5rem', boxShadow: 'var(--shadow-sm)' }}>
