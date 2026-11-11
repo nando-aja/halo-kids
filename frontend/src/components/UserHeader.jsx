@@ -3,7 +3,6 @@ import {
   Menu,
   Shield,
   User,
-  Search,
   ChevronRight,
   Building2
 } from 'lucide-react';
@@ -15,7 +14,6 @@ export default function UserHeader({
   isLoggedIn = false,
   currentUser = null,
   onOpenLogin,
-  onOpenLacak,
   onSwitchToDashboard,
   onNavigateTab
 }) {
@@ -87,28 +85,6 @@ export default function UserHeader({
       {/* Sisi Kanan: Lacak Tiket, Notifikasi, & Profil User */}
       <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
         
-        {/* Tombol Lacak Tiket (Desktop: full pill, Mobile: compact circular button) */}
-        {onOpenLacak && (
-          <>
-            <button
-              onClick={onOpenLacak}
-              className="hidden sm:flex items-center gap-1.5 text-xs font-semibold bg-slate-50 hover:bg-slate-100 active:scale-95 text-blue-950 border border-slate-200 px-3 py-1.5 rounded-full transition shadow-2xs"
-              title="Lacak status tiket pengaduan atau COTA"
-            >
-              <Search size={13} className="text-sky-600" />
-              <span>Lacak Tiket</span>
-            </button>
-            <button
-              onClick={onOpenLacak}
-              className="sm:hidden flex items-center justify-center w-[38px] h-[38px] rounded-full bg-slate-50 hover:bg-slate-100 active:scale-95 text-blue-900 border border-slate-200 transition shadow-2xs"
-              title="Lacak Tiket"
-              aria-label="Lacak Tiket"
-            >
-              <Search size={16} className="text-sky-600" />
-            </button>
-          </>
-        )}
-
         {/* Tombol Akses Cepat Dashboard jika akun adalah Admin / Super Admin */}
         {isLoggedIn && (currentUser?.role === 'Super Admin' || currentUser?.roleCode === 'admin' || currentUser?.roleMode === 'superadmin') && onSwitchToDashboard && (
           <button
@@ -139,7 +115,6 @@ export default function UserHeader({
           isLoggedIn={isLoggedIn}
           currentUser={currentUser}
           onOpenLogin={onOpenLogin}
-          onOpenLacak={onOpenLacak}
           onNavigateTab={onNavigateTab}
         />
 

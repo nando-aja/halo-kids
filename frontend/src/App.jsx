@@ -380,7 +380,6 @@ export default function App() {
             onOpenLapor={() => { setViewMode('pengaduan'); setActiveTab('pengaduan'); }}
             onOpenHotline={() => setIsHotlineOpen(true)}
             onOpenLogin={() => setIsLoginOpen(true)}
-            onOpenLacak={() => setIsLacakOpen(true)}
           />
 
           <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }} className="pb-16 lg:pb-0">
@@ -417,7 +416,6 @@ export default function App() {
               setActiveTab(newTab);
             }}
             onSwitchToDashboard={() => { if (canUseAdminDashboard(currentUser)) setViewMode('dashboard'); }}
-            onOpenLacak={() => setIsLacakOpen(true)}
             onOpenLogin={() => setIsLoginOpen(true)}
             onLogout={handleLogout}
             onToggleLoginDemo={handleToggleLoginDemo}
@@ -434,7 +432,6 @@ export default function App() {
               isLoggedIn={isLoggedIn}
               currentUser={currentUser}
               onOpenLogin={() => setIsLoginOpen(true)}
-              onOpenLacak={() => setIsLacakOpen(true)}
               onSwitchToDashboard={() => { if (canUseAdminDashboard(currentUser)) setViewMode('dashboard'); }}
               onNavigateTab={(tab) => {
                 if (tab === 'dashboard') {

@@ -6,7 +6,6 @@ import {
   Heart,
   UserCheck,
   HeartHandshake,
-  Search,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -22,7 +21,6 @@ export default function UserSidebar({
   viewMode = 'landing',
   onNavigate,
   onSwitchToDashboard,
-  onOpenLacak,
   onOpenLogin,
   onLogout,
   onToggleLoginDemo,
@@ -507,71 +505,8 @@ export default function UserSidebar({
                 );
               })}
             </nav>
-
-            {/* Quick Tool: Lacak Status Tiket */}
-            {onOpenLacak && (
-              <div
-                style={{
-                  marginTop: '1.25rem',
-                  paddingTop: '1rem',
-                  borderTop: '1px solid rgba(255, 255, 255, 0.08)'
-                }}
-              >
-                {!collapsed && (
-                  <div
-                    style={{
-                      fontSize: '0.675rem',
-                      fontWeight: 800,
-                      color: '#64748b',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.08em',
-                      marginBottom: '0.5rem',
-                      paddingLeft: '0.5rem'
-                    }}
-                  >
-                    Pencarian
-                  </div>
-                )}
-
-                <button
-                  onClick={() => {
-                    if (onOpenLacak) onOpenLacak();
-                    setMobileOpen(false);
-                  }}
-                  title={collapsed ? 'Lacak Status Pengaduan' : undefined}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: collapsed ? 'center' : 'flex-start',
-                    gap: '0.65rem',
-                    width: '100%',
-                    padding: collapsed ? '0.65rem 0.5rem' : '0.6rem 0.75rem',
-                    borderRadius: '8px',
-                    border: '1px solid rgba(255, 255, 255, 0.05)',
-                    background: 'rgba(255, 255, 255, 0.03)',
-                    color: '#cbd5e1',
-                    fontSize: '0.8rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    transition: 'var(--transition-fast)'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                    e.currentTarget.style.color = '#ffffff';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
-                    e.currentTarget.style.color = '#cbd5e1';
-                  }}
-                >
-                  <Search size={16} color="#38bdf8" />
-                  {!collapsed && <span>Lacak Status Tiket</span>}
-                </button>
-              </div>
-            )}
           </div>
         </div>
-
         {/* Bottom User Profile & Auth Section */}
         <div
           style={{

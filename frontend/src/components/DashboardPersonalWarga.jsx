@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import CotaTrackingModal from './Modals/CotaTrackingModal';
 import {
   ShieldAlert,
   CheckCircle2,
@@ -34,19 +35,22 @@ export default function DashboardPersonalWarga({
 
   // 1. Data Ringkasan Status Layanan (4 Kotak Kartu Berdampingan)
   const summaryCards = [
-    {
-      id: 'cota',
-      title: 'Status Pengajuan Adopsi (COTA)',
-      value: '1 Berkas Diproses',
-      badgeText: 'Tahap Verifikasi PIPA',
-      badgeColor: 'bg-blue-100 text-blue-700 border-blue-200',
-      badgeDot: 'bg-blue-600',
-      icon: UserCheck,
-      iconBg: 'bg-blue-50 text-blue-600 border-blue-200',
-      accentBorder: 'hover:border-blue-300',
-      action: onSwitchToAdopsi,
-      actionLabel: 'Lihat Pengajuan'
-    },
+{
+  id: 'cota',
+  title: 'Status Pengajuan Adopsi (COTA)',
+  value: '1 Berkas Diproses',
+  badgeText: 'Tahap Verifikasi PIPA',
+  badgeColor: 'bg-blue-100 text-blue-700 border-blue-200',
+  badgeDot: 'bg-blue-600',
+  icon: UserCheck,
+  iconBg: 'bg-blue-50 text-blue-600 border-blue-200',
+  accentBorder: 'hover:border-blue-300',
+
+  // Buka pencarian nomor pengajuan COTA
+  action: () => setIsCotaTrackingOpen(true),
+
+  actionLabel: 'Lihat Pengajuan'
+},
     {
       id: 'pengaduan',
       title: 'Laporan Pengaduan Aktif',
@@ -368,7 +372,10 @@ export default function DashboardPersonalWarga({
         </div>
 
       </div>
-
+           <CotaTrackingModal
+        isOpen={isCotaTrackingOpen}
+        onClose={() => setIsCotaTrackingOpen(false)}
+      />
     </div>
   );
 }

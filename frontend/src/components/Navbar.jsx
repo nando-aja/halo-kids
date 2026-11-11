@@ -7,7 +7,6 @@ export default function Navbar({
   currentUser = null,
   onOpenHotline,
   onOpenLogin,
-  onOpenLacak,
   onLogout,
   onToggleLoginDemo,
   activeTab,
@@ -165,7 +164,6 @@ export default function Navbar({
             isLoggedIn={isLoggedIn}
             currentUser={currentUser}
             onOpenLogin={onOpenLogin}
-            onOpenLacak={onOpenLacak}
             onNavigateTab={(tab) => {
               setActiveTab(tab);
               if (tab === 'pengaduan' && onSwitchToPengaduan) onSwitchToPengaduan();
