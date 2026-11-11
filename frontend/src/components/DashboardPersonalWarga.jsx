@@ -30,6 +30,7 @@ export default function DashboardPersonalWarga({
   onOpenHotline = () => {},
   onSelectPanti = () => {}
 }) {
+  const [isCotaTrackingOpen, setIsCotaTrackingOpen] = useState(false);
   // Nama Pengguna Dinamis
   const userName = currentUser?.name?.trim() ? currentUser.name : 'Warga';
 
