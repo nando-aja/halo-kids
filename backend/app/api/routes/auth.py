@@ -1,4 +1,7 @@
 
+import logging
+import time
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -16,6 +19,8 @@ from app.schemas.auth import TokenResponse
 
 
 router = APIRouter()
+
+logger = logging.getLogger("uvicorn.error")
 
 
 # ==========================================
@@ -146,11 +151,16 @@ def login(
 
     clean_email = form_data.username.strip().lower()
 
+    # Ukur tiap tahap login untuk audit performa (P6).
+    t_start = time.perf_counter()
+
     user = (
         db.query(User)
         .filter(User.email == clean_email)
         .first()
     )
+
+    t_query = time.perf_counter()
 
     if user is None:
         raise HTTPException(
@@ -159,10 +169,20 @@ def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if not verify_password(
+    password_ok = verify_password(
         form_data.password,
         user.password_hash,
-    ):
+    )
+
+    t_verify = time.perf_counter()
+
+    logger.info(
+        "login timing: query_db=%.0f ms, verify_password=%.0f ms",
+        (t_query - t_start) * 1000,
+        (t_verify - t_query) * 1000,
+    )
+
+    if not password_ok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email atau password salah.",

@@ -1,12 +1,15 @@
 
+import hashlib
+import logging
 from pathlib import Path
-from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
 
 from app.core.config import settings
 from app.services.supabase_storage import supabase
 
+
+logger = logging.getLogger("uvicorn.error")
 
 MAX_FILE_SIZE = 10 * 1024 * 1024
 
@@ -32,6 +35,17 @@ ALLOWED_LKSA_DOCUMENT_TYPES = {
     "proposal_lksa",
     "foto_verifikasi",
 }
+
+# Jenis dokumen yang memang boleh lebih dari satu berkas.
+# Jenis lain hanya boleh punya SATU dokumen per pengajuan; mengunggah
+# berkas baru akan menggantikan berkas lama, bukan menambah baris baru.
+MULTIPLE_DOCUMENT_TYPES = {
+    "ktp_pengurus",
+    "foto_verifikasi",
+}
+
+# Batas berkas untuk jenis dokumen "multiple" agar kuota Supabase aman.
+MAX_FILES_PER_MULTIPLE_TYPE = 10
 
 
 def _get_private_bucket() -> str:
@@ -67,23 +81,43 @@ def _get_content_type(extension: str, original_type: str | None) -> str:
     return original_type or "application/octet-stream"
 
 
-def upload_lksa_document(
-    file: UploadFile,
+def _normalize_extension(extension: str) -> str:
+    """.jpeg dan .jpg dianggap sama agar path tidak ganda."""
+    extension = extension.lower()
+    return ".jpg" if extension == ".jpeg" else extension
+
+
+def build_lksa_object_path(
     id_pengajuan: int,
+    jenis_dokumen: str,
+    sha256: str,
+    extension: str,
+) -> str:
+    """
+    Path penyimpanan deterministik:
+
+        pengajuan_lksa/<id_pengajuan>/<jenis_dokumen>/<sha256>.<ext>
+
+    Nama file diturunkan dari ISI file (SHA-256), bukan UUID acak.
+    Akibatnya berkas yang sama dikirim berulang akan menghasilkan
+    path yang sama sehingga bisa dideteksi sebagai duplikat.
+    """
+    return (
+        f"pengajuan_lksa/{id_pengajuan}/"
+        f"{jenis_dokumen}/{sha256}{_normalize_extension(extension)}"
+    )
+
+
+def prepare_lksa_file(
+    file: UploadFile,
     jenis_dokumen: str,
 ) -> dict:
     """
-    Upload dokumen LKSA ke bucket private.
+    Validasi dan baca berkas ke memori (maks 10 MB), lalu hitung SHA-256.
 
-    Struktur:
-    pengajuan_lksa/<id_pengajuan>/<jenis_dokumen>/<uuid>.<ext>
+    Tahap ini belum menyentuh Supabase, sehingga route dapat memeriksa
+    duplikasi di database terlebih dahulu sebelum mengunggah apa pun.
     """
-
-    if id_pengajuan <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="ID pengajuan tidak valid.",
-        )
 
     if jenis_dokumen not in ALLOWED_LKSA_DOCUMENT_TYPES:
         raise HTTPException(
@@ -105,17 +139,8 @@ def upload_lksa_document(
             detail="Format file harus PDF, JPG, JPEG, atau PNG.",
         )
 
-    bucket = _get_private_bucket()
-
-    # Nama file acak agar tidak menimpa file sebelumnya.
-    filename = f"{uuid4().hex}{extension}"
-
-    object_path = (
-        f"pengajuan_lksa/{id_pengajuan}/"
-        f"{jenis_dokumen}/{filename}"
-    )
-
     file_bytes = bytearray()
+    digest = hashlib.sha256()
 
     try:
         while True:
@@ -125,52 +150,131 @@ def upload_lksa_document(
                 break
 
             file_bytes.extend(chunk)
+            digest.update(chunk)
 
             if len(file_bytes) > MAX_FILE_SIZE:
                 raise HTTPException(
                     status_code=413,
                     detail="Ukuran file maksimal 10 MB.",
                 )
-
-        if not file_bytes:
-            raise HTTPException(
-                status_code=400,
-                detail="File yang diunggah kosong.",
-            )
-
-        content_type = _get_content_type(
-            extension,
-            file.content_type,
-        )
-
-        try:
-            supabase.storage.from_(bucket).upload(
-                path=object_path,
-                file=bytes(file_bytes),
-                file_options={
-                    "content-type": content_type,
-                    "cache-control": "3600",
-                    "upsert": "false",
-                },
-            )
-        except Exception as exc:
-            raise HTTPException(
-                status_code=502,
-                detail="Gagal mengunggah dokumen ke Supabase Storage.",
-            ) from exc
-
-        return {
-            "bucket_name": bucket,
-            "path_file": object_path,
-            "mime_type": content_type,
-            "ukuran_byte": len(file_bytes),
-        }
-
     finally:
         try:
             file.file.close()
         except Exception:
             pass
+
+    if not file_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail="File yang diunggah kosong.",
+        )
+
+    return {
+        "content": bytes(file_bytes),
+        "extension": _normalize_extension(extension),
+        "content_type": _get_content_type(extension, file.content_type),
+        "sha256": digest.hexdigest(),
+        "size": len(file_bytes),
+    }
+
+
+def upload_prepared_lksa_file(
+    prepared: dict,
+    id_pengajuan: int,
+    jenis_dokumen: str,
+) -> dict:
+    """
+    Unggah berkas hasil prepare_lksa_file() ke bucket private.
+
+    Karena path berasal dari hash isi file, upsert aman dipakai:
+    jika objek dengan path sama sudah ada (mis. sisa upload yang
+    gagal disimpan ke database), isinya identik sehingga tidak ada
+    data yang tertimpa dan tidak ada objek baru yang bertambah.
+    """
+
+    if id_pengajuan <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="ID pengajuan tidak valid.",
+        )
+
+    if jenis_dokumen not in ALLOWED_LKSA_DOCUMENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="Jenis dokumen LKSA tidak dikenal.",
+        )
+
+    bucket = _get_private_bucket()
+
+    object_path = build_lksa_object_path(
+        id_pengajuan,
+        jenis_dokumen,
+        prepared["sha256"],
+        prepared["extension"],
+    )
+
+    try:
+        supabase.storage.from_(bucket).upload(
+            path=object_path,
+            file=prepared["content"],
+            file_options={
+                "content-type": prepared["content_type"],
+                "cache-control": "3600",
+                "upsert": "true",
+            },
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Gagal mengunggah dokumen ke Supabase Storage.",
+        ) from exc
+
+    return {
+        "bucket_name": bucket,
+        "path_file": object_path,
+        "mime_type": prepared["content_type"],
+        "ukuran_byte": prepared["size"],
+    }
+
+
+def upload_lksa_document(
+    file: UploadFile,
+    id_pengajuan: int,
+    jenis_dokumen: str,
+) -> dict:
+    """
+    Pembungkus kompatibilitas: validasi + unggah dalam satu panggilan.
+
+    Struktur:
+    pengajuan_lksa/<id_pengajuan>/<jenis_dokumen>/<sha256>.<ext>
+    """
+
+    prepared = prepare_lksa_file(file, jenis_dokumen)
+
+    return upload_prepared_lksa_file(
+        prepared,
+        id_pengajuan,
+        jenis_dokumen,
+    )
+
+
+def delete_lksa_document_quietly(
+    bucket_name: str,
+    path_file: str,
+) -> None:
+    """
+    Hapus objek Supabase tanpa melempar error.
+
+    Dipakai untuk pembersihan sisa (mis. berkas lama yang digantikan)
+    setelah data utama sudah aman tersimpan di database.
+    """
+
+    try:
+        delete_lksa_document(bucket_name, path_file)
+    except Exception:
+        logger.warning(
+            "Gagal membersihkan objek Supabase: %s", path_file
+        )
 
 
 def delete_lksa_document(

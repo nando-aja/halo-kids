@@ -29,6 +29,21 @@ class Settings(BaseSettings):
     SUPABASE_PRIVATE_BUCKET: str = "halokids-private"
     SUPABASE_PUBLIC_BUCKET: str = "halokids-public"
 
+    # Koneksi database (hanya dipakai untuk MySQL/TiDB).
+    # TiDB Cloud menutup koneksi yang menganggur, jadi koneksi di pool
+    # harus dicek/didaur ulang sebelum dipakai agar request pertama
+    # setelah idle tidak menggantung puluhan detik.
+    DB_POOL_SIZE: int = 10
+    DB_MAX_OVERFLOW: int = 10
+    DB_POOL_TIMEOUT: int = 15
+    DB_POOL_RECYCLE: int = 240
+    DB_CONNECT_TIMEOUT: int = 10
+    DB_READ_TIMEOUT: int = 25
+    DB_WRITE_TIMEOUT: int = 25
+
+    # Request yang lebih lambat dari ini (ms) dicatat di log sebagai SLOW.
+    SLOW_REQUEST_MS: int = 1500
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",

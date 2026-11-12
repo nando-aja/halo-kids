@@ -42,13 +42,40 @@ export function mapBackendRoleToFrontend(role) {
 }
 
 
+// Permintaan login/register yang sedang berjalan. Jika pengguna menekan
+// tombol (atau Enter) berulang kali dengan data yang sama, request yang
+// sama dipakai bersama. Ini mencegah beberapa verifikasi bcrypt berjalan
+// paralel di server yang CPU-nya terbatas, yang membuat semuanya melambat.
+let loginInFlight = null;
+let registerInFlight = null;
+
+
 export const authService = {
 
   // ==========================================
   // LOGIN
   // ==========================================
 
-  async login(email, password) {
+  login(email, password) {
+    const key = `${email.trim().toLowerCase()}\u0000${password}`;
+
+    if (loginInFlight && loginInFlight.key === key) {
+      return loginInFlight.promise;
+    }
+
+    const promise = authService._performLogin(email, password).finally(() => {
+      if (loginInFlight && loginInFlight.promise === promise) {
+        loginInFlight = null;
+      }
+    });
+
+    loginInFlight = { key, promise };
+
+    return promise;
+  },
+
+
+  async _performLogin(email, password) {
     const params = new URLSearchParams();
 
     params.append('username', email.trim().toLowerCase());
@@ -129,25 +156,10 @@ export const authService = {
 
     if (backendRole === 'pengelola-panti') {
 
-      // Panti hanya tersedia jika sudah disetujui.
-      try {
-        const pantiRes = await apiClient.get(
-          '/api/panti/me'
-        );
+      // Ambil pengajuan LKSA milik pengguna terlebih dahulu.
+      // 404 berarti pengelola belum membuat pengajuan.
+      let applicationLookupFailed = false;
 
-        if (pantiRes.data) {
-          profileData.managedPanti = pantiRes.data;
-          profileData.pantiName =
-            pantiRes.data.nama_panti;
-        }
-      } catch (error) {
-        // 404 normal bagi pengelola yang belum mempunyai panti resmi.
-        profileData.managedPanti = null;
-        profileData.pantiName = null;
-      }
-
-
-      // Ambil pengajuan LKSA milik pengguna.
       try {
         const applicationRes = await apiClient.get(
           '/api/pengajuan-lksa/me'
@@ -160,9 +172,40 @@ export const authService = {
           applicationRes.data.status_pengajuan;
 
       } catch (error) {
-        // 404 berarti pengelola belum membuat pengajuan.
         profileData.lksaApplication = null;
         profileData.lksaApplicationStatus = null;
+
+        applicationLookupFailed =
+          error?.response?.status !== 404;
+      }
+
+      profileData.managedPanti = null;
+      profileData.pantiName = null;
+
+      // Data panti resmi hanya ada setelah pengajuan DISETUJUI.
+      // Sebelum itu /api/panti/me pasti menjawab 403/404, jadi
+      // tidak dipanggil agar login tidak membuang satu round-trip
+      // dan Network tidak dipenuhi error yang memang diharapkan.
+      // Jika status pengajuan tidak bisa dipastikan (gagal dimuat),
+      // tetap coba ambil panti sebagai cadangan.
+      const mayHaveOfficialPanti =
+        profileData.lksaApplicationStatus === 'disetujui' ||
+        applicationLookupFailed;
+
+      if (mayHaveOfficialPanti) {
+        try {
+          const pantiRes = await apiClient.get(
+            '/api/panti/me'
+          );
+
+          if (pantiRes.data) {
+            profileData.managedPanti = pantiRes.data;
+            profileData.pantiName =
+              pantiRes.data.nama_panti;
+          }
+        } catch {
+          // 403/404 normal bagi pengelola yang belum punya panti resmi.
+        }
       }
     }
 
@@ -188,7 +231,32 @@ export const authService = {
   // REGISTER
   // ==========================================
 
-  async register({
+  register(data) {
+    const key = JSON.stringify([
+      data.nama,
+      data.email,
+      data.password,
+      data.no_hp,
+      data.role,
+    ]);
+
+    if (registerInFlight && registerInFlight.key === key) {
+      return registerInFlight.promise;
+    }
+
+    const promise = authService._performRegister(data).finally(() => {
+      if (registerInFlight && registerInFlight.promise === promise) {
+        registerInFlight = null;
+      }
+    });
+
+    registerInFlight = { key, promise };
+
+    return promise;
+  },
+
+
+  async _performRegister({
     nama,
     email,
     password,

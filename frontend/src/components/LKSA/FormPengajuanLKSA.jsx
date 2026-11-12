@@ -1,5 +1,5 @@
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import pantiService from '../../api/pantiService';
 
 const DOCUMENTS = [
@@ -92,6 +92,18 @@ function getRequiredDocuments(bentukLembaga) {
   });
 }
 
+// Sidik jari sederhana sebuah berkas pilihan pengguna. Dipakai agar berkas
+// yang sudah berhasil terunggah tidak dikirim ulang saat pengguna menekan
+// tombol kirim lagi setelah ada kegagalan di tengah proses.
+function fileFingerprint(documentKey, file) {
+  return [
+    documentKey,
+    file.name,
+    file.size,
+    file.lastModified,
+  ].join('|');
+}
+
 function formatFileSize(bytes) {
   if (!bytes) return '-';
 
@@ -125,6 +137,16 @@ export default function FormPengajuanLKSA({
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [uploadProgress, setUploadProgress] = useState('');
+  const [inputVersion, setInputVersion] = useState(0);
+
+  // Pengunci submit SINKRON. State `saving` baru berlaku setelah render
+  // berikutnya, sehingga klik cepat 2-3 kali masih lolos. Ref berubah
+  // seketika, jadi klik kedua dan seterusnya langsung ditolak.
+  const submitLockRef = useRef(false);
+
+  // Berkas yang sudah berhasil terunggah pada sesi form ini.
+  const uploadedFilesRef = useRef(new Set());
 
   const requiredDocuments = useMemo(
     () => getRequiredDocuments(form.bentuk_lembaga),
@@ -209,6 +231,13 @@ export default function FormPengajuanLKSA({
 
     setErrorMessage('');
 
+    // Pilihan baru dari pengguna = niat baru: izinkan unggah ulang.
+    for (const fingerprint of [...uploadedFilesRef.current]) {
+      if (fingerprint.startsWith(`${documentKey}|`)) {
+        uploadedFilesRef.current.delete(fingerprint);
+      }
+    }
+
     setSelectedFiles((previous) => ({
       ...previous,
       [documentKey]: files,
@@ -224,7 +253,7 @@ export default function FormPengajuanLKSA({
   }
 
   async function handleDeleteDocument(documentId) {
-    if (!application || !isEditable) return;
+    if (!application || !isEditable || submitLockRef.current) return;
 
     const confirmed = window.confirm(
       'Hapus dokumen ini dari pengajuan?'
@@ -250,6 +279,9 @@ export default function FormPengajuanLKSA({
   async function handleSubmit(event) {
     event.preventDefault();
 
+    // Tolak klik/submit ganda selama proses sebelumnya masih berjalan.
+    if (submitLockRef.current) return;
+
     if (!isEditable) {
       setErrorMessage(
         'Pengajuan sudah dikirim dan tidak dapat diedit.'
@@ -268,9 +300,13 @@ export default function FormPengajuanLKSA({
       return;
     }
 
+    submitLockRef.current = true;
     setSaving(true);
     setErrorMessage('');
     setSuccessMessage('');
+    setUploadProgress('');
+
+    let draftWasCreated = false;
 
     try {
       const payload = {
@@ -293,6 +329,7 @@ export default function FormPengajuanLKSA({
         currentApplication =
           await pantiService.createLksaApplication(payload);
 
+        draftWasCreated = true;
         setApplication(currentApplication);
       } else {
         currentApplication =
@@ -304,21 +341,54 @@ export default function FormPengajuanLKSA({
         setApplication(currentApplication);
       }
 
-      // Upload file secara berurutan agar mudah dilacak jika gagal.
-      for (const document of DOCUMENTS) {
-        const files = selectedFiles[document.key] || [];
+      // Kumpulkan hanya berkas yang BELUM terunggah.
+      const pendingUploads = [];
 
-        for (const file of files) {
-          await pantiService.uploadLksaDocument(
-            currentApplication.id,
-            document.key,
-            file,
-            document.label
-          );
+      for (const document of DOCUMENTS) {
+        for (const file of selectedFiles[document.key] || []) {
+          if (
+            !uploadedFilesRef.current.has(
+              fileFingerprint(document.key, file)
+            )
+          ) {
+            pendingUploads.push({ document, file });
+          }
         }
       }
 
+      // Upload berurutan agar mudah dilacak jika gagal.
+      for (let index = 0; index < pendingUploads.length; index += 1) {
+        const { document, file } = pendingUploads[index];
+
+        setUploadProgress(
+          `Mengunggah dokumen ${index + 1} dari ${pendingUploads.length}...`
+        );
+
+        await pantiService.uploadLksaDocument(
+          currentApplication.id,
+          document.key,
+          file,
+          document.label
+        );
+
+        // Catat sukses, lalu keluarkan berkas ini dari antrian pilihan.
+        // Jika langkah berikutnya gagal, percobaan ulang tidak akan
+        // mengunggah berkas ini lagi.
+        uploadedFilesRef.current.add(
+          fileFingerprint(document.key, file)
+        );
+
+        setSelectedFiles((previous) => ({
+          ...previous,
+          [document.key]: (previous[document.key] || []).filter(
+            (item) => item !== file
+          ),
+        }));
+      }
+
       await refreshDocuments(currentApplication.id);
+
+      setUploadProgress('Mengirim pengajuan...');
 
       // Kirim pengajuan setelah upload selesai.
       const submitted =
@@ -328,6 +398,7 @@ export default function FormPengajuanLKSA({
 
       setApplication(submitted);
       setSelectedFiles({});
+      setInputVersion((value) => value + 1);
 
       setSuccessMessage(
         'Pengajuan LKSA berhasil dikirim kepada Admin Dinsos.'
@@ -338,8 +409,13 @@ export default function FormPengajuanLKSA({
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
 
-      // Simpan informasi draft jika sebelumnya berhasil dibuat.
-      if (!application && error?.response?.status !== 404) {
+      // Draft mungkin sudah tercatat di server walau respons gagal
+      // sampai ke browser (mis. timeout). Muat ulang agar percobaan
+      // berikutnya memakai draft yang sama, bukan membuat draft baru.
+      if (
+        (!application || draftWasCreated) &&
+        error?.response?.status !== 404
+      ) {
         try {
           const latest = await pantiService.getMyLksaApplication();
           setApplication(latest);
@@ -347,9 +423,17 @@ export default function FormPengajuanLKSA({
         } catch {
           // Draft belum tentu sudah berhasil tercatat.
         }
+      } else if (application) {
+        try {
+          await refreshDocuments(application.id);
+        } catch {
+          // abaikan; daftar dokumen akan dimuat ulang saat berhasil.
+        }
       }
     } finally {
+      setUploadProgress('');
       setSaving(false);
+      submitLockRef.current = false;
     }
   }
 
@@ -566,9 +650,11 @@ export default function FormPengajuanLKSA({
             </label>
 
             <input
+              key={`${doc.key}-${inputVersion}`}
               type="file"
               accept=".pdf,.jpg,.jpeg,.png"
               multiple={Boolean(doc.multiple)}
+              disabled={saving}
               onChange={(event) =>
                 handleFileChange(doc.key, event)
               }
@@ -594,8 +680,9 @@ export default function FormPengajuanLKSA({
 
                   <button
                     type="button"
+                    disabled={saving}
                     onClick={() => handleDeleteDocument(item.id)}
-                    className="text-red-600 font-semibold hover:underline"
+                    className="text-red-600 font-semibold hover:underline disabled:opacity-50"
                   >
                     Hapus
                   </button>
@@ -612,9 +699,11 @@ export default function FormPengajuanLKSA({
             Foto Bangunan dan Fasilitas Panti
           </label>
           <input
+            key={`foto_verifikasi-${inputVersion}`}
             type="file"
             accept=".jpg,.jpeg,.png"
             multiple
+            disabled={saving}
             onChange={(event) =>
               handleFileChange('foto_verifikasi', event)
             }
@@ -625,6 +714,28 @@ export default function FormPengajuanLKSA({
               {selectedFiles.foto_verifikasi.length} foto dipilih.
             </p>
           )}
+
+          {documents
+            .filter((item) => item.jenis_dokumen === 'foto_verifikasi')
+            .map((item) => (
+              <div
+                key={item.id}
+                className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs bg-slate-50 p-2 rounded-lg"
+              >
+                <span className="text-slate-600 break-all">
+                  {item.nama_file_asli} · {item.status_verifikasi}
+                </span>
+
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => handleDeleteDocument(item.id)}
+                  className="text-red-600 font-semibold hover:underline disabled:opacity-50"
+                >
+                  Hapus
+                </button>
+              </div>
+            ))}
         </div>
       </section>
 
@@ -634,7 +745,7 @@ export default function FormPengajuanLKSA({
             type="button"
             onClick={onCancel}
             disabled={saving}
-            className="px-5 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-semibold"
+            className="px-5 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-semibold disabled:opacity-60"
           >
             Batal
           </button>
@@ -643,9 +754,12 @@ export default function FormPengajuanLKSA({
         <button
           type="submit"
           disabled={saving}
-          className="px-5 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-bold disabled:opacity-60"
+          aria-busy={saving}
+          className="px-5 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-bold disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          {saving ? 'Mengunggah dan mengirim...' : 'Kirim Pengajuan LKSA'}
+          {saving
+            ? (uploadProgress || 'Mengunggah dan mengirim...')
+            : 'Kirim Pengajuan LKSA'}
         </button>
       </div>
     </form>

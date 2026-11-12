@@ -7,6 +7,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Response,
     UploadFile,
 )
 from sqlalchemy.orm import Session
@@ -25,8 +26,13 @@ from app.schemas.pengajuan_lksa import (
 
 from app.services.lksa_storage import (
     ALLOWED_LKSA_DOCUMENT_TYPES,
-    upload_lksa_document,
+    MAX_FILES_PER_MULTIPLE_TYPE,
+    MULTIPLE_DOCUMENT_TYPES,
+    build_lksa_object_path,
+    prepare_lksa_file,
+    upload_prepared_lksa_file,
     delete_lksa_document,
+    delete_lksa_document_quietly,
     create_lksa_signed_url,
 )
 
@@ -37,6 +43,16 @@ router = APIRouter()
 EDITABLE_STATUSES = {
     "draft",
     "perlu_perbaikan",
+}
+
+# Status setelah pengajuan dikirim. Jika /ajukan dipanggil lagi pada
+# status ini (klik ganda / retry jaringan), hasilnya idempoten:
+# data pengajuan dikembalikan apa adanya tanpa diubah.
+ALREADY_SUBMITTED_STATUSES = {
+    "diajukan",
+    "ditinjau",
+    "menunggu_tinjauan_manual",
+    "disetujui",
 }
 
 ACTIVE_STATUSES = {
@@ -57,16 +73,27 @@ def get_owned_application(
     db: Session,
     current_user: User,
     application_id: int,
+    for_update: bool = False,
 ) -> PengajuanLKSA:
+    """
+    for_update=True mengunci baris pengajuan (SELECT ... FOR UPDATE)
+    sampai transaksi selesai. Request lain untuk pengajuan yang sama
+    (upload / hapus / ajukan) akan menunggu, sehingga klik ganda atau
+    request paralel diproses satu per satu dan tidak membuat
+    record ganda.
+    """
 
-    application = (
-        db.query(PengajuanLKSA)
-        .filter(
-            PengajuanLKSA.id == application_id,
-            PengajuanLKSA.id_pengelola == current_user.id,
-        )
-        .first()
+    query = db.query(PengajuanLKSA).filter(
+        PengajuanLKSA.id == application_id,
+        PengajuanLKSA.id_pengelola == current_user.id,
     )
+
+    if for_update:
+        # populate_existing: pastikan status terbaru dari database
+        # yang dipakai, bukan salinan lama di session.
+        query = query.with_for_update().populate_existing()
+
+    application = query.first()
 
     if application is None:
         raise HTTPException(
@@ -143,6 +170,16 @@ def create_lksa_application(
     db: Session = Depends(get_db),
 ):
 
+    # Kunci baris pengguna agar dua request "buat draft" dari akun yang
+    # sama tidak bisa berjalan bersamaan dan membuat dua draft.
+    (
+        db.query(User)
+        .filter(User.id == current_user.id)
+        .with_for_update()
+        .populate_existing()
+        .first()
+    )
+
     existing = (
         db.query(PengajuanLKSA)
         .filter(
@@ -150,6 +187,7 @@ def create_lksa_application(
             PengajuanLKSA.status_pengajuan.in_(ACTIVE_STATUSES),
         )
         .order_by(PengajuanLKSA.id.desc())
+        .with_for_update()
         .first()
     )
 
@@ -269,20 +307,25 @@ def update_application(
 )
 def upload_application_document(
     application_id: int,
+    response: Response,
     jenis_dokumen: str = Form(...),
     file: UploadFile = File(...),
     label_dokumen: str | None = Form(default=None),
     current_user: User = Depends(require_pengelola_panti),
     db: Session = Depends(get_db),
 ):
+    """
+    Unggah dokumen pengajuan LKSA (anti-duplikasi).
 
-    application = get_owned_application(
-        db,
-        current_user,
-        application_id,
-    )
-
-    ensure_editable(application)
+    - Berkas yang SAMA (isi identik) untuk pengajuan + jenis dokumen
+      yang sama tidak membuat record/objek baru. Dokumen yang sudah
+      ada dikembalikan dengan status 200.
+    - Jenis dokumen "tunggal": berkas baru MENGGANTIKAN berkas lama.
+    - Jenis dokumen "multiple" (KTP pengurus, foto fasilitas): berkas
+      berbeda ditambahkan, maksimal MAX_FILES_PER_MULTIPLE_TYPE.
+    - Baris pengajuan dikunci selama proses sehingga request paralel
+      diproses berurutan.
+    """
 
     if jenis_dokumen not in ALLOWED_LKSA_DOCUMENT_TYPES:
         raise HTTPException(
@@ -290,10 +333,71 @@ def upload_application_document(
             detail="Jenis dokumen tidak didukung.",
         )
 
-    upload_result = upload_lksa_document(
-        file=file,
-        id_pengajuan=application.id,
-        jenis_dokumen=jenis_dokumen,
+    application = get_owned_application(
+        db,
+        current_user,
+        application_id,
+        for_update=True,
+    )
+
+    ensure_editable(application)
+
+    # Validasi + baca + hash berkas (belum menyentuh Supabase).
+    prepared = prepare_lksa_file(file, jenis_dokumen)
+
+    object_path = build_lksa_object_path(
+        application.id,
+        jenis_dokumen,
+        prepared["sha256"],
+        prepared["extension"],
+    )
+
+    # Locking read: selalu membaca data terbaru, termasuk dokumen yang
+    # baru di-commit request lain saat kita menunggu kunci.
+    same_type_documents = (
+        db.query(DokumenPengajuanLKSA)
+        .filter(
+            DokumenPengajuanLKSA.id_pengajuan == application.id,
+            DokumenPengajuanLKSA.jenis_dokumen == jenis_dokumen,
+        )
+        .order_by(DokumenPengajuanLKSA.id.asc())
+        .with_for_update()
+        .all()
+    )
+
+    # 1. Berkas identik sudah ada -> idempoten, tidak upload ulang.
+    duplicate = next(
+        (
+            item
+            for item in same_type_documents
+            if item.path_file == object_path
+        ),
+        None,
+    )
+
+    if duplicate is not None:
+        response.status_code = 200
+        return duplicate
+
+    is_multiple = jenis_dokumen in MULTIPLE_DOCUMENT_TYPES
+
+    # 2. Batas jumlah berkas untuk jenis "multiple".
+    if (
+        is_multiple
+        and len(same_type_documents) >= MAX_FILES_PER_MULTIPLE_TYPE
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Jumlah berkas untuk jenis dokumen ini sudah mencapai "
+                f"batas maksimal ({MAX_FILES_PER_MULTIPLE_TYPE})."
+            ),
+        )
+
+    upload_result = upload_prepared_lksa_file(
+        prepared,
+        application.id,
+        jenis_dokumen,
     )
 
     document = DokumenPengajuanLKSA(
@@ -308,8 +412,22 @@ def upload_application_document(
         status_verifikasi="menunggu",
     )
 
+    # Jenis tunggal: dokumen lama digantikan. Objek lama baru dihapus
+    # dari Supabase SETELAH baris baru berhasil di-commit, jadi
+    # kegagalan di tengah jalan tidak membuat pengajuan kehilangan
+    # dokumen.
+    replaced_documents = [] if is_multiple else list(same_type_documents)
+    replaced_objects = [
+        (item.bucket_name, item.path_file)
+        for item in replaced_documents
+    ]
+
     try:
         db.add(document)
+
+        for old_document in replaced_documents:
+            db.delete(old_document)
+
         db.commit()
         db.refresh(document)
 
@@ -317,12 +435,15 @@ def upload_application_document(
         db.rollback()
 
         # Bersihkan file remote jika penyimpanan metadata gagal.
-        delete_lksa_document(
+        delete_lksa_document_quietly(
             upload_result["bucket_name"],
             upload_result["path_file"],
         )
 
         raise
+
+    for bucket_name, path_file in replaced_objects:
+        delete_lksa_document_quietly(bucket_name, path_file)
 
     return document
 
@@ -422,6 +543,7 @@ def remove_application_document(
         db,
         current_user,
         application_id,
+        for_update=True,
     )
 
     ensure_editable(application)
@@ -432,6 +554,7 @@ def remove_application_document(
             DokumenPengajuanLKSA.id == document_id,
             DokumenPengajuanLKSA.id_pengajuan == application.id,
         )
+        .with_for_update()
         .first()
     )
 
@@ -473,7 +596,14 @@ def submit_application(
         db,
         current_user,
         application_id,
+        for_update=True,
     )
+
+    # Idempoten: pengajuan yang sudah terkirim (klik ganda, retry
+    # jaringan) tidak diproses ulang dan tanggal_diajukan tidak
+    # tertimpa. Data yang sama dikembalikan dengan status 200.
+    if application.status_pengajuan in ALREADY_SUBMITTED_STATUSES:
+        return build_application_response(db, application)
 
     ensure_editable(application)
 
@@ -482,6 +612,7 @@ def submit_application(
         .filter(
             DokumenPengajuanLKSA.id_pengajuan == application.id
         )
+        .with_for_update()
         .all()
     )
 
