@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from app.db.models.pengajuan_lksa import PengajuanLKSA
 
 from app.db.models.report_audit import AuditLogPengaduan
 from app.api.deps import get_db, get_optional_current_user
@@ -34,23 +35,37 @@ from app.services.report_attachments import (
 router = APIRouter()
 
 
+
 def get_panti_or_404(
     panti_id: int,
     db: Session,
 ) -> PantiAsuhan:
+    """
+    Panti hanya boleh diakses publik jika terhubung
+    dengan pengajuan LKSA yang telah disetujui Admin.
+    """
+
     panti = (
         db.query(PantiAsuhan)
-        .filter(PantiAsuhan.id == panti_id)
+        .join(
+            PengajuanLKSA,
+            PengajuanLKSA.id_panti == PantiAsuhan.id,
+        )
+        .filter(
+            PantiAsuhan.id == panti_id,
+            PengajuanLKSA.status_pengajuan == "disetujui",
+        )
         .first()
     )
 
     if panti is None:
         raise HTTPException(
             status_code=404,
-            detail="Panti tidak ditemukan",
+            detail="Panti tidak ditemukan atau belum disetujui.",
         )
 
     return panti
+
 
 
 @router.get(
@@ -63,6 +78,7 @@ def get_public_statistics_endpoint(
     return get_public_statistics(db)
 
 
+
 @router.get(
     "/panti",
     response_model=list[PantiResponse],
@@ -71,10 +87,17 @@ def get_panti_list(
     wilayah: str | None = None,
     db: Session = Depends(get_db),
 ):
-    query = db.query(PantiAsuhan)
+    query = (
+        db.query(PantiAsuhan)
+        .join(
+            PengajuanLKSA,
+            PengajuanLKSA.id_panti == PantiAsuhan.id,
+        )
+        .filter(
+            PengajuanLKSA.status_pengajuan == "disetujui"
+        )
+    )
 
-    # Schema proposal tidak memiliki kolom kecamatan khusus.
-    # Karena itu filter wilayah memakai teks pada kolom alamat.
     if wilayah:
         query = query.filter(
             PantiAsuhan.alamat.ilike(f"%{wilayah}%")
@@ -82,6 +105,7 @@ def get_panti_list(
 
     return (
         query
+        .distinct()
         .order_by(PantiAsuhan.id.desc())
         .all()
     )

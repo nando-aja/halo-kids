@@ -25,41 +25,80 @@ import AiAssistant from './components/AiAssistant';
 // AI Assistant hanya untuk Admin / Super Admin (bukan Admin Panti).
 // Peran backend menjadi sumber utama. roleMode tidak boleh memberi akses,
 // karena ia bisa berasal dari pilihan tampilan/demo yang lama.
+
+
 const getAuthenticatedRole = (user) => {
   const value = user?.peran || user?.roleCode || user?.role || '';
-  return String(value).trim().toLowerCase().replace(/[_\s]+/g, '-');
+
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, '-');
+};
+
+const DINSOS_ROLES = [
+  'admin',
+  'super-admin',
+  'superadmin',
+  'admin-dinsos',
+  'dinas-sosial-(super-admin)',
+  'dinas-sosial-super-admin',
+];
+
+const LKSA_MANAGER_ROLES = [
+  'admin-panti',
+  'admin-lksa',
+  'pengelola-panti',
+  'pengelola-lksa',
+  'pantiadmin',
+];
+
+const isLksaManager = (user) => {
+  return LKSA_MANAGER_ROLES.includes(getAuthenticatedRole(user));
 };
 
 const canUseAdminDashboard = (user) => {
   const role = getAuthenticatedRole(user);
-  return [
-    'admin', 'super-admin', 'superadmin', 'admin-dinsos',
-    'dinas-sosial-(super-admin)', 'dinas-sosial-super-admin',
-    'admin-panti', 'admin-lksa', 'pengelola-panti', 'pengelola-lksa', 'pantiadmin'
-  ].includes(role);
+
+  return (
+    DINSOS_ROLES.includes(role) ||
+    isLksaManager(user)
+  );
 };
 
 const canUseAdminAI = (user) => {
-  const role = getAuthenticatedRole(user);
-  // AI administrasi hanya untuk akun Dinsos, bukan pengelola LKSA atau warga.
-  return [
-    'admin', 'super-admin', 'superadmin', 'admin-dinsos',
-    'dinas-sosial-(super-admin)', 'dinas-sosial-super-admin'
-  ].includes(role);
+  return DINSOS_ROLES.includes(getAuthenticatedRole(user));
 };
+
+const getInitialViewMode = (user) => {
+  if (DINSOS_ROLES.includes(getAuthenticatedRole(user))) {
+    return 'dashboard';
+  }
+
+  if (isLksaManager(user)) {
+    return 'dashboard';
+  }
+
+  return 'landing';
+};
+
+
 
 export default function App() {
   // Saat aplikasi dibuka ulang, arahkan berdasarkan role akun yang tersimpan.
   // Super Admin / Admin LKSA masuk Workspace; User Publik masuk Portal Warga.
-  const [viewMode, setViewMode] = useState(() => {
-    try {
-      const sess = localStorage.getItem('halokids_active_session');
-      if (sess && canUseAdminDashboard(JSON.parse(sess))) return 'dashboard';
-    } catch {
-      // Abaikan sesi yang tidak valid dan tampilkan portal publik.
-    }
+
+const [viewMode, setViewMode] = useState(() => {
+  try {
+    const sess = localStorage.getItem('halokids_active_session');
+
+    if (!sess) return 'landing';
+
+    return getInitialViewMode(JSON.parse(sess));
+  } catch {
     return 'landing';
-  });
+  }
+});
   const [activeTab, setActiveTab] = useState('beranda');
 
   // Auth User State: loaded from localStorage if exists
@@ -171,7 +210,7 @@ export default function App() {
     }
 
     // Workspace hanya untuk akun admin/pengelola panti; User Publik langsung ke portal warga.
-    setViewMode(canUseAdminDashboard(loggedUser) ? 'dashboard' : 'landing');
+    setViewMode(getInitialViewMode(loggedUser));
     setActiveTab('beranda');
   };
 

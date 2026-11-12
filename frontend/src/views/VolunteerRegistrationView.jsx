@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect,useState } from 'react';
+import pantiService from '../api/pantiService';
 import {
   HeartHandshake,
   GraduationCap,
@@ -31,7 +32,11 @@ export default function VolunteerRegistrationView({
   const [alamat, setAlamat] = useState('');
   const [usia, setUsia] = useState('');
   const [bidang, setBidang] = useState('Pendidikan / Tutor Belajar');
-  const [pantiTujuan, setPantiTujuan] = useState('LKSA Kasih Bunda Mandiri');
+  const [pantiList, setPantiList] = useState([]);
+  const [pantiId, setPantiId] = useState('');
+  const [pantiLoading, setPantiLoading] = useState(true);
+  const [pantiLoadError, setPantiLoadError] = useState('');
+  const [submitError, setSubmitError] = useState('');
   const [tanggal, setTanggal] = useState('');
   const [sesiWaktu, setSesiWaktu] = useState('Weekend Khusus (Sabtu & Minggu)');
   const [tujuanKerelawanan, setTujuanKerelawanan] = useState('');
@@ -42,6 +47,51 @@ export default function VolunteerRegistrationView({
 
   // Validation state
   const [ageWarning, setAgeWarning] = useState('');
+useEffect(() => {
+  let isMounted = true;
+
+  async function loadApprovedPanti() {
+    setPantiLoading(true);
+    setPantiLoadError('');
+
+    try {
+      const result = await pantiService.getPublicPantiList();
+
+      if (!Array.isArray(result)) {
+        throw new Error('Format daftar LKSA tidak valid.');
+      }
+
+      if (isMounted) {
+        setPantiList(result);
+        setPantiId(result.length > 0 ? String(result[0].id) : '');
+      }
+    } catch (error) {
+      console.error('Gagal memuat daftar LKSA:', error);
+
+      if (isMounted) {
+        setPantiList([]);
+        setPantiId('');
+        setPantiLoadError(
+          'Daftar LKSA tidak dapat dimuat. Silakan coba kembali.'
+        );
+      }
+    } finally {
+      if (isMounted) {
+        setPantiLoading(false);
+      }
+    }
+  }
+
+  loadApprovedPanti();
+
+  return () => {
+    isMounted = false;
+  };
+}, []);
+
+const selectedPanti = pantiList.find(
+  (item) => String(item.id) === String(pantiId)
+);
 
   const handleAgeChange = (val) => {
     setUsia(val);
@@ -75,115 +125,135 @@ export default function VolunteerRegistrationView({
     } catch (e) {}
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
 
-    if (!nama.trim() || !nomorHp.trim() || !alamat.trim() || !usia || !tanggal || !tujuanKerelawanan.trim()) {
-      alert('Harap lengkapi semua kolom bertanda bintang (*) sebelum mengirim formulir.');
-      return;
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setSubmitError('');
+
+  if (
+    !nama.trim() ||
+    !nomorHp.trim() ||
+    !alamat.trim() ||
+    !usia ||
+    !tanggal ||
+    !tujuanKerelawanan.trim()
+  ) {
+    setSubmitError('Lengkapi semua kolom wajib sebelum mengirim formulir.');
+    return;
+  }
+
+  if (parseInt(usia, 10) < 17) {
+    setSubmitError('Usia minimal relawan adalah 17 tahun.');
+    return;
+  }
+
+  if (!selectedPanti) {
+    setSubmitError('Pilih LKSA resmi yang tersedia.');
+    return;
+  }
+
+  if (!uploadedKtp?.file) {
+    setSubmitError('Unggah scan KTP atau KTM sebelum mengirim pendaftaran.');
+    return;
+  }
+
+  setIsSubmitting(true);
+
+  try {
+    const uploadRes = await relawanService.uploadIdentitas(
+      uploadedKtp.file
+    );
+
+    if (!uploadRes?.dokumen_identitas) {
+      throw new Error('Dokumen identitas gagal diunggah.');
     }
 
-    if (parseInt(usia, 10) < 17) {
-      alert('Mohon maaf, batas usia minimal relawan adalah 17 tahun.');
-      return;
+    const res = await relawanService.registerRelawan({
+      dokumen_identitas: uploadRes.dokumen_identitas,
+      nama: nama.trim(),
+      nomor_hp: nomorHp.trim(),
+      alamat: alamat.trim(),
+      usia: parseInt(usia, 10),
+      bidang,
+      panti_tujuan: selectedPanti.nama_panti,
+      id_panti: Number(selectedPanti.id),
+      tanggal,
+      sesi_waktu: sesiWaktu,
+      tujuan_kerelawanan: tujuanKerelawanan.trim(),
+    });
+
+    const newVolunteerData = {
+      id: `VOL-${res.id}`,
+      nama: res.nama,
+      nomorHp: res.nomor_hp,
+      alamat: res.alamat,
+      usia: res.usia,
+      bidang: res.bidang,
+      pantiTujuan: res.panti_tujuan,
+      tanggal: res.tanggal,
+      sesiWaktu: res.sesi_waktu,
+      tujuanKerelawanan: res.tujuan_kerelawanan,
+      ktpFileName: uploadedKtp.name,
+      ktpFileSize: uploadedKtp.size,
+      status:
+        res.status === 'disetujui'
+          ? 'Disetujui'
+          : res.status === 'ditolak'
+          ? 'Ditolak'
+          : 'Menunggu Persetujuan',
+      submittedAt: 'Baru saja',
+    };
+
+    if (onAddVolunteer) {
+      onAddVolunteer(newVolunteerData);
     }
 
-    setIsSubmitting(true);
+    window.dispatchEvent(
+      new CustomEvent('halokids:data_updated', {
+        detail: { type: 'relawan' },
+      })
+    );
 
-    try {
-      let docPath = 'storage/identitas_relawan/ktp_default.jpg';
-      if (uploadedKtp?.file) {
-        try {
-          const uploadRes = await relawanService.uploadIdentitas(uploadedKtp.file);
-          if (uploadRes?.dokumen_identitas) {
-            docPath = uploadRes.dokumen_identitas;
-          }
-        } catch (uploadErr) {
-          console.warn('Upload identitas relawan fallback:', uploadErr);
-        }
-      }
+    setSubmittedTicket(newVolunteerData);
+    triggerConfetti();
 
-      const res = await relawanService.registerRelawan({
-        dokumen_identitas: docPath,
-        nama: nama.trim(),
-        nomor_hp: nomorHp.trim(),
-        alamat: alamat.trim(),
-        usia: parseInt(usia, 10),
-        bidang,
-        panti_tujuan: pantiTujuan,
-        id_panti: null,
-        tanggal,
-        sesi_waktu: sesiWaktu,
-        tujuan_kerelawanan: tujuanKerelawanan.trim(),
-      });
+  } catch (error) {
+    console.error('Pendaftaran relawan gagal:', error);
 
-      const newVolunteerData = {
-        id: `VOL-${res.id || new Date().getFullYear()}`,
-        nama: res.nama,
-        nomorHp: res.nomor_hp,
-        alamat: res.alamat,
-        usia: res.usia,
-        bidang: res.bidang,
-        pantiTujuan: res.panti_tujuan,
-        tanggal: res.tanggal,
-        sesiWaktu: res.sesi_waktu,
-        tujuanKerelawanan: res.tujuan_kerelawanan,
-        ktpFileName: uploadedKtp ? uploadedKtp.name : 'scan_identitas.jpg',
-        ktpFileSize: uploadedKtp ? uploadedKtp.size : '800 KB',
-        status: res.status === 'disetujui' ? 'Disetujui' : res.status === 'ditolak' ? 'Ditolak' : 'Menunggu Persetujuan',
-        submittedAt: 'Baru saja'
-      };
+    setSubmitError(
+      error?.response?.data?.detail ||
+      error?.friendlyMessage ||
+      error?.message ||
+      'Pendaftaran gagal dikirim. Silakan periksa koneksi dan coba kembali.'
+    );
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
-      if (onAddVolunteer) {
-        onAddVolunteer(newVolunteerData);
-      }
 
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('halokids:data_updated', { detail: { type: 'relawan' } }));
-      }
 
-      setSubmittedTicket(newVolunteerData);
-      triggerConfetti();
-    } catch (err) {
-      console.warn('Backend API relawan fallback offline:', err);
-      const regId = `VOL-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-      const fallbackVolunteer = {
-        id: regId,
-        nama: nama.trim(),
-        nomorHp: nomorHp.trim(),
-        alamat: alamat.trim(),
-        usia: parseInt(usia, 10),
-        bidang,
-        pantiTujuan,
-        tanggal,
-        sesiWaktu,
-        tujuanKerelawanan: tujuanKerelawanan.trim(),
-        ktpFileName: uploadedKtp ? uploadedKtp.name : 'scan_ktp_relawan.jpg',
-        ktpFileSize: uploadedKtp ? uploadedKtp.size : '842 KB',
-        status: 'Menunggu Persetujuan',
-        submittedAt: 'Hari ini, ' + new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB'
-      };
-      if (onAddVolunteer) onAddVolunteer(fallbackVolunteer);
-      setSubmittedTicket(fallbackVolunteer);
-      triggerConfetti();
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+const resetForm = () => {
+  setNama('');
+  setNomorHp('');
+  setAlamat('');
+  setUsia('');
+  setBidang('Pendidikan / Tutor Belajar');
 
-  const resetForm = () => {
-    setNama('');
-    setNomorHp('');
-    setAlamat('');
-    setUsia('');
-    setBidang('Pendidikan / Tutor Belajar');
-    setTanggal('');
-    setSesiWaktu('Weekend Khusus (Sabtu & Minggu)');
-    setTujuanKerelawanan('');
-    setUploadedKtp(null);
-    setIsAgreed(false);
-    setSubmittedTicket(null);
-  };
+  // Reset pilihan LKSA ke pilihan pertama dari database.
+  setPantiId(
+    pantiList.length > 0 ? String(pantiList[0].id) : ''
+  );
+
+  setSubmitError('');
+  setTanggal('');
+  setSesiWaktu('Weekend Khusus (Sabtu & Minggu)');
+  setTujuanKerelawanan('');
+  setUploadedKtp(null);
+  setIsAgreed(false);
+  setSubmittedTicket(null);
+};
+
 
   return (
     <div style={{ background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
@@ -476,26 +546,70 @@ export default function VolunteerRegistrationView({
                   </div>
                 </div>
               </div>
+{/* PILIHAN LKSA TUJUAN DARI BACKEND */}
+<div>
+  <label
+    style={{
+      fontSize: '0.825rem',
+      fontWeight: 700,
+      color: '#334155',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.35rem',
+      marginBottom: '0.4rem',
+    }}
+  >
+    <Building2 size={15} color="#1d4ed8" />
+    Pilihan Lembaga Panti Asuhan (LKSA) Tujuan *
+  </label>
 
-              {/* Pilihan Panti Asuhan Tujuan */}
-              <div>
-                <label style={{ fontSize: '0.825rem', fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.4rem' }}>
-                  <Building2 size={15} color="#1d4ed8" /> Pilihan Lembaga Panti Asuhan (LKSA) Tujuan *
-                </label>
-                <select
-                  value={pantiTujuan}
-                  onChange={(e) => setPantiTujuan(e.target.value)}
-                  style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '0.875rem', background: '#ffffff' }}
-                >
-                  <option value="LKSA Kasih Bunda Mandiri">LKSA Kasih Bunda Mandiri (Kec. Cibinong - 42 Anak Asuh)</option>
-                  <option value="Yayasan Mutiara Kasih Gunung Putri">Yayasan Mutiara Kasih Gunung Putri (Kec. Gunung Putri - 35 Anak)</option>
-                  <option value="Panti Balita Tunas Bangsa">Panti Balita Tunas Bangsa (Kec. Cibinong - 28 Balita)</option>
-                  <option value="LKSA Bina Harapan Ciawi">LKSA Bina Harapan Ciawi (Kec. Ciawi - 38 Remaja)</option>
-                  <option value="LKSA Darul Husna Parung">LKSA Darul Husna Parung (Kec. Parung - 30 Anak)</option>
-                  <option value="Fleksibel / Sesuai Penugasan Dinas Sosial">Fleksibel (Dinas Sosial yang mengalokasikan ke panti paling membutuhkan)</option>
-                </select>
-              </div>
-            </div>
+  <select
+    required
+    value={pantiId}
+    disabled={pantiLoading || pantiList.length === 0}
+    onChange={(e) => setPantiId(e.target.value)}
+    style={{
+      width: '100%',
+      padding: '0.65rem 0.85rem',
+      borderRadius: '8px',
+      border: '1px solid #cbd5e1',
+      outline: 'none',
+      fontSize: '0.875rem',
+      background: '#ffffff',
+    }}
+  >
+    <option value="">
+      {pantiLoading
+        ? 'Memuat daftar LKSA...'
+        : 'Pilih LKSA tujuan'}
+    </option>
+
+    {pantiList.map((panti) => (
+      <option key={panti.id} value={String(panti.id)}>
+        {panti.nama_panti} — {panti.alamat || 'Alamat belum tersedia'}
+      </option>
+    ))}
+  </select>
+
+  {pantiLoadError && (
+    <p style={{ color: '#dc2626', fontSize: '0.75rem', marginTop: '0.5rem' }}>
+      {pantiLoadError}
+    </p>
+  )}
+
+  {!pantiLoading && !pantiLoadError && pantiList.length === 0 && (
+    <p style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '0.5rem' }}>
+      Belum ada LKSA yang disetujui dan tersedia untuk tujuan relawan.
+    </p>
+  )}
+
+  {submitError && (
+    <p style={{ color: '#dc2626', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+      {submitError}
+    </p>
+  )}
+</div>
+</div>
 
             {/* STEP 3: TANGGAL & WAKTU KEGIATAN */}
             <div style={{

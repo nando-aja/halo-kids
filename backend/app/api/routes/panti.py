@@ -7,6 +7,7 @@ from app.db.models.dana import LaporanDana
 from app.db.models.donation import Donasi
 from app.db.models.gallery import GaleriPanti
 from app.db.models.panti import PantiAsuhan
+from app.db.models.pengajuan_lksa import PengajuanLKSA
 from app.db.models.user import User
 from app.db.models.wishlist import WishlistPanti
 from app.schemas.dana import DanaResponse
@@ -34,19 +35,42 @@ def get_managed_panti(
     db: Session,
     current_user: User,
 ) -> PantiAsuhan:
+    # Cari panti yang benar-benar dimiliki akun pengelola.
     panti = (
         db.query(PantiAsuhan)
-        .filter(PantiAsuhan.id_admin_pengelola == current_user.id)
+        .filter(
+            PantiAsuhan.id_admin_pengelola == current_user.id
+        )
         .first()
     )
 
     if panti is None:
-        panti = db.query(PantiAsuhan).first()
-
-    if panti is None:
         raise HTTPException(
-            404,
-            "Panti yang dikelola tidak ditemukan",
+            status_code=404,
+            detail=(
+                "Panti belum terhubung dengan akun ini. "
+                "Lengkapi pengajuan pendaftaran LKSA terlebih dahulu."
+            ),
+        )
+
+    # Ambil pengajuan terbaru untuk panti tersebut.
+    pengajuan = (
+        db.query(PengajuanLKSA)
+        .filter(PengajuanLKSA.id_panti == panti.id)
+        .order_by(PengajuanLKSA.id.desc())
+        .first()
+    )
+
+    if (
+        pengajuan is None
+        or pengajuan.status_pengajuan != "disetujui"
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Akses operasional panti belum tersedia. "
+                "Pengajuan LKSA harus disetujui Admin Dinsos terlebih dahulu."
+            ),
         )
 
     return panti
@@ -82,7 +106,6 @@ def update_my_panti(
     for key, value in changes.items():
         setattr(item, key, value)
 
-    item.id_admin_pengelola = current_user.id
     db.commit()
     db.refresh(item)
     return item

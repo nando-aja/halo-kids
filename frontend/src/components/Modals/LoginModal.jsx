@@ -202,67 +202,89 @@ export default function LoginModal({
   // =========================================================================
   // LOGIKA REGISTRASI AKUN BARU KE FASTAPI BACKEND
   // =========================================================================
-  const handleRegisterSubmit = async (e) => {
-    e.preventDefault();
-    setRegError(null);
 
-    const cleanEmail = regEmail.trim().toLowerCase();
-    const cleanName = regName.trim();
+const handleRegisterSubmit = async (e) => {
+  e.preventDefault();
+  setRegError(null);
 
-    // 1. Validasi format nama dan email
-    if (!cleanName) {
-      setRegError('Nama lengkap wajib diisi.');
-      return;
-    }
-    if (!cleanEmail) {
-      setRegError('Alamat email wajib diisi.');
-      return;
-    }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(cleanEmail)) {
-      setRegError('Format email tidak valid (contoh: nama@domain.com).');
-      return;
-    }
+  const cleanEmail = regEmail.trim().toLowerCase();
+  const cleanName = regName.trim();
 
-    // 2. Validasi panjang kata sandi
-    if (regPassword.length < 6) {
-      setRegError('Kata sandi minimal 6 karakter.');
-      return;
-    }
-    if (regPassword !== regConfirmPassword) {
-      setRegError('Konfirmasi kata sandi tidak sesuai.');
-      return;
-    }
+  // Validasi nama.
+  if (!cleanName) {
+    setRegError('Nama lengkap wajib diisi.');
+    return;
+  }
 
-    setIsLoading(true);
+  // Validasi email.
+  if (!cleanEmail) {
+    setRegError('Alamat email wajib diisi.');
+    return;
+  }
 
-    try {
-      const targetRoleCode = selectedRole === 'pengelola panti' ? 'pengelola-panti' : selectedRole === 'admin' ? 'admin' : 'masyarakat';
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-      // Panggil endpoint registrasi FastAPI: POST /api/auth/register
-      await authService.register({
-        nama: cleanName,
-        email: cleanEmail,
-        password: regPassword,
-        no_hp: regPhone.trim() || null,
-        role: targetRoleCode
-      });
+  if (!emailRegex.test(cleanEmail)) {
+    setRegError('Format email tidak valid.');
+    return;
+  }
 
-      setIsLoading(false);
-      setIsRegisterMode(false);
-      setEmailInput(cleanEmail);
-      setPassword(regPassword);
-      setLoginSuccessNotice('Pendaftaran berhasil! Silakan masuk dengan akun baru Anda.');
-    } catch (apiErr) {
-      setIsLoading(false);
-      const errDetail = apiErr.friendlyMessage || apiErr.response?.data?.detail;
-      setRegError(
-        typeof errDetail === 'string'
-          ? errDetail
-          : 'Pendaftaran gagal. Pastikan email belum pernah terdaftar sebelumnya.'
+  // Validasi password.
+  if (regPassword.length < 6) {
+    setRegError('Kata sandi minimal 6 karakter.');
+    return;
+  }
+
+  if (regPassword !== regConfirmPassword) {
+    setRegError('Konfirmasi kata sandi tidak sesuai.');
+    return;
+  }
+
+  // Registrasi hanya untuk masyarakat dan pengelola LKSA.
+  const targetRoleCode =
+    selectedRole === 'pengelola panti'
+      ? 'pengelola-panti'
+      : 'masyarakat';
+
+  setIsLoading(true);
+
+  try {
+    await authService.register({
+      nama: cleanName,
+      email: cleanEmail,
+      password: regPassword,
+      no_hp: regPhone.trim() || null,
+      role: targetRoleCode,
+    });
+
+    setIsRegisterMode(false);
+    setEmailInput(cleanEmail);
+    setPassword(regPassword);
+
+    if (targetRoleCode === 'pengelola-panti') {
+      setLoginSuccessNotice(
+        'Akun pengelola berhasil dibuat. Silakan login, lalu lengkapi pengajuan pendaftaran LKSA beserta dokumennya. Panti belum berstatus resmi sebelum disetujui Dinsos.'
+      );
+    } else {
+      setLoginSuccessNotice(
+        'Pendaftaran berhasil! Silakan masuk dengan akun baru Anda.'
       );
     }
-  };
+  } catch (apiErr) {
+    const errDetail =
+      apiErr?.friendlyMessage ||
+      apiErr?.response?.data?.detail;
+
+    setRegError(
+      typeof errDetail === 'string'
+        ? errDetail
+        : 'Pendaftaran gagal. Pastikan email belum pernah terdaftar.'
+    );
+  } finally {
+    setIsLoading(false);
+  }
+};
+
 
   return (
     <div

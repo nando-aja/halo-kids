@@ -1,15 +1,17 @@
-import apiClient, { 
-  TOKEN_STORAGE_KEY, 
-  SESSION_STORAGE_KEY, 
-  decodeJwt 
+
+import apiClient, {
+  TOKEN_STORAGE_KEY,
+  SESSION_STORAGE_KEY,
+  decodeJwt,
 } from './apiClient';
 
+
 /**
- * Pemetaan peran backend FastAPI ke label dan kode mode frontend
- * Backend roles: 'masyarakat' | 'pengelola-panti' | 'admin'
+ * Mapping role backend ke role frontend.
  */
 export function mapBackendRoleToFrontend(role) {
   const normalized = (role || '').toLowerCase();
+
   if (normalized === 'admin') {
     return {
       role: 'Super Admin',
@@ -18,7 +20,11 @@ export function mapBackendRoleToFrontend(role) {
       roleLabel: 'Dinas Sosial (Super Admin)',
     };
   }
-  if (normalized === 'pengelola-panti' || normalized === 'pengelola panti') {
+
+  if (
+    normalized === 'pengelola-panti' ||
+    normalized === 'pengelola panti'
+  ) {
     return {
       role: 'Admin Panti',
       roleCode: 'pengelola-panti',
@@ -26,6 +32,7 @@ export function mapBackendRoleToFrontend(role) {
       roleLabel: 'Pengelola Panti Asuhan / LKSA',
     };
   }
+
   return {
     role: 'User Publik',
     roleCode: 'masyarakat',
@@ -34,126 +41,239 @@ export function mapBackendRoleToFrontend(role) {
   };
 }
 
+
 export const authService = {
-  /**
-   * Login user dengan email dan password.
-   * Endpoint FastAPI /api/auth/login menggunakan OAuth2PasswordRequestForm
-   * sehingga body dikirim sebagai form URL-encoded (username = email, password = password).
-   */
+
+  // ==========================================
+  // LOGIN
+  // ==========================================
+
   async login(email, password) {
     const params = new URLSearchParams();
-    params.append('username', email.trim());
+
+    params.append('username', email.trim().toLowerCase());
     params.append('password', password);
 
-    const response = await apiClient.post('/api/auth/login', params, {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-    });
+    const response = await apiClient.post(
+      '/api/auth/login',
+      params,
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      }
+    );
 
-    const { access_token, token_type } = response.data;
-    localStorage.setItem(TOKEN_STORAGE_KEY, access_token);
+    const {
+      access_token,
+      token_type,
+    } = response.data;
 
-    // Decode isi token JWT
+    localStorage.setItem(
+      TOKEN_STORAGE_KEY,
+      access_token
+    );
+
     const jwtPayload = decodeJwt(access_token);
     const backendRole = jwtPayload?.role || 'masyarakat';
-    const roleMeta = mapBackendRoleToFrontend(backendRole);
+
+    const roleMeta = mapBackendRoleToFrontend(
+      backendRole
+    );
 
     let profileData = {
-      id: jwtPayload?.sub ? parseInt(jwtPayload.sub, 10) : null,
-      email: email.trim(),
+      id: jwtPayload?.sub
+        ? parseInt(jwtPayload.sub, 10)
+        : null,
+
+      email: email.trim().toLowerCase(),
       name: email.split('@')[0],
+
       ...roleMeta,
     };
 
-    // Ambil profil lengkap dari endpoint sesuai peran
-    try {
-      if (backendRole === 'masyarakat') {
-        const meRes = await apiClient.get('/api/masyarakat/me');
+
+    // ==========================================
+    // PROFIL MASYARAKAT
+    // ==========================================
+
+    if (backendRole === 'masyarakat') {
+      try {
+        const meRes = await apiClient.get(
+          '/api/masyarakat/me'
+        );
+
         if (meRes.data) {
           profileData = {
             ...profileData,
             ...meRes.data,
+
             name: meRes.data.nama || profileData.name,
             phone: meRes.data.no_hp || '',
+
             ...roleMeta,
           };
         }
-      } else if (backendRole === 'pengelola-panti') {
-        try {
-          const pantiRes = await apiClient.get('/api/panti/me');
-          if (pantiRes.data) {
-            profileData = {
-              ...profileData,
-              managedPanti: pantiRes.data,
-              pantiName: pantiRes.data.nama_panti,
-              ...roleMeta,
-            };
-          }
-        } catch {
-          // Bila data panti belum terikat
-        }
+      } catch (error) {
+        console.warn(
+          'Profil masyarakat belum dapat dimuat:',
+          error
+        );
       }
-    } catch {
-      // Abaikan jika me request gagal, gunakan data dari token JWT
     }
 
-    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(profileData));
-    return { token: access_token, tokenType: token_type, user: profileData };
+
+    // ==========================================
+    // PROFIL PENGELOLA LKSA
+    // ==========================================
+
+    if (backendRole === 'pengelola-panti') {
+
+      // Panti hanya tersedia jika sudah disetujui.
+      try {
+        const pantiRes = await apiClient.get(
+          '/api/panti/me'
+        );
+
+        if (pantiRes.data) {
+          profileData.managedPanti = pantiRes.data;
+          profileData.pantiName =
+            pantiRes.data.nama_panti;
+        }
+      } catch (error) {
+        // 404 normal bagi pengelola yang belum mempunyai panti resmi.
+        profileData.managedPanti = null;
+        profileData.pantiName = null;
+      }
+
+
+      // Ambil pengajuan LKSA milik pengguna.
+      try {
+        const applicationRes = await apiClient.get(
+          '/api/pengajuan-lksa/me'
+        );
+
+        profileData.lksaApplication =
+          applicationRes.data;
+
+        profileData.lksaApplicationStatus =
+          applicationRes.data.status_pengajuan;
+
+      } catch (error) {
+        // 404 berarti pengelola belum membuat pengajuan.
+        profileData.lksaApplication = null;
+        profileData.lksaApplicationStatus = null;
+      }
+    }
+
+
+    // ==========================================
+    // SIMPAN SESSION
+    // ==========================================
+
+    localStorage.setItem(
+      SESSION_STORAGE_KEY,
+      JSON.stringify(profileData)
+    );
+
+    return {
+      token: access_token,
+      tokenType: token_type,
+      user: profileData,
+    };
   },
 
-  /**
-   * Pendaftaran akun baru (otomatis role: 'masyarakat')
-   */
-  async register({ nama, email, password, no_hp, role = 'masyarakat' }) {
+
+  // ==========================================
+  // REGISTER
+  // ==========================================
+
+  async register({
+    nama,
+    email,
+    password,
+    no_hp,
+    role = 'masyarakat',
+  }) {
     const payload = {
       nama: nama.trim(),
-      email: email.trim(),
+      email: email.trim().toLowerCase(),
       password,
       no_hp: no_hp ? no_hp.trim() : null,
+      role,
     };
-    if (role) {
-      payload.role = role;
-    }
-    const response = await apiClient.post('/api/auth/register', payload);
+
+    const response = await apiClient.post(
+      '/api/auth/register',
+      payload
+    );
+
     return response.data;
   },
 
-  /**
-   * Ambil data profil user yang sedang login
-   */
+
+  // ==========================================
+  // PROFIL SAYA
+  // ==========================================
+
   async getMyProfile(role = 'masyarakat') {
+
     if (role === 'pengelola-panti') {
-      const res = await apiClient.get('/api/panti/me');
-      return res.data;
+      const response = await apiClient.get(
+        '/api/panti/me'
+      );
+
+      return response.data;
     }
-    const res = await apiClient.get('/api/masyarakat/me');
-    return res.data;
+
+    const response = await apiClient.get(
+      '/api/masyarakat/me'
+    );
+
+    return response.data;
   },
 
-  /**
-   * Ambil session aktif dari localStorage
-   */
+
+  // ==========================================
+  // SESSION
+  // ==========================================
+
   getStoredSession() {
     try {
-      const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+      const raw = localStorage.getItem(
+        SESSION_STORAGE_KEY
+      );
+
       return raw ? JSON.parse(raw) : null;
-    } catch {
+
+    } catch (error) {
+      console.error(
+        'Gagal membaca session:',
+        error
+      );
+
       return null;
     }
   },
 
-  /**
-   * Logout dan bersihkan session
-   */
+
+  // ==========================================
+  // LOGOUT
+  // ==========================================
+
   logout() {
     try {
       localStorage.removeItem(TOKEN_STORAGE_KEY);
       localStorage.removeItem(SESSION_STORAGE_KEY);
-    } catch (e) {
-      console.warn(e);
+
+    } catch (error) {
+      console.error(
+        'Gagal menghapus session:',
+        error
+      );
     }
   },
 };
+
 
 export default authService;

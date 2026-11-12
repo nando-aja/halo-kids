@@ -24,161 +24,105 @@ export default function DirektoriPantiView({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Semua');
   const [copiedId, setCopiedId] = useState(null);
-  const [apiPantiList, setApiPantiList] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const pantiList = [
-    {
-      id: 'lksa-1',
-      name: 'LKSA Kasih Bunda Mandiri',
-      category: 'Anak',
-      akreditasi: 'AKREDITASI A KEMENSOS',
-      regNo: 'NO: 408/LKSA/DINSOS/2023',
-      image: '/lksa1.jpg',
-      kecamatan: 'Cibinong',
-      location: 'Kecamatan Cibinong • 1.2km dari Pusat Pemkab',
-      address: 'Jl. Raya Cibinong No. 45, RT 02/RW 05, Kec. Cibinong, Kab. Bogor 16911',
-      anakCount: '42 Anak',
-      usia: '5 - 17 Thn',
-      highlight: 'Keutamaan: Beasiswa Formal & Pembinaan Tahfidz',
-      phone: '0812-9988-7711',
-      pengurus: 'Dra. Hj. Siti Aminah',
-      bank: 'Bank Mandiri: 133-00-1928374-1 a.n LKSA Kasih Bunda',
-      neededGoods: ['Sembako (Beras & Minyak)', 'Seragam Sekolah SD/SMP', 'Buku Tulis & Alat Tulis', 'Sepatu Sekolah'],
-      desc: 'LKSA Kasih Bunda Mandiri memfasilitasi 42 anak yatim piatu & dhuafa dengan asrama layak, beasiswa pendidikan hingga tingkat SMA, serta bimbingan keterampilan komputer.'
-    },
-    {
-      id: 'lksa-2',
-      name: 'Panti Asuhan Balita Tunas Bangsa',
-      category: 'Balita',
-      akreditasi: 'AKREDITASI A KEMENSOS',
-      regNo: 'NO: 409/LKSA/DINSOS/2023',
-      image: '/lksa2.jpg',
-      kecamatan: 'Cibinong',
-      location: 'Kecamatan Cibinong • 1.8km dari Kompleks Pemda',
-      address: 'Jl. Pemda Tegar Beriman No. 12, Kel. Pakansari, Kec. Cibinong 16915',
-      anakCount: '26 Balita',
-      usia: '0 - 4 Thn',
-      highlight: 'Keutamaan: Perawatan Bayi Medis 24 Jam & Nutrisi Gizi',
-      phone: '0813-8822-4400',
-      pengurus: 'Ns. Ratna Juwita, S.Kep',
-      bank: 'Bank BNI: 089-112-9943 a.n Yayasan Tunas Bangsa',
-      neededGoods: ['Susu Formula SGM 0-12 Bln', 'Popok Bayi M & L', 'Minyak Telon & Sabun Balita', 'Kasur Busa Bayi'],
-      desc: 'Khusus pengasuhan bayi terlantar dan balita dhuafa. Dilengkapi pos medis 24 jam, pemantauan stimulasi tumbuh kembang, serta jaminan nutrisi gizi sehat.'
-    },
-    {
-      id: 'lksa-3',
-      name: 'LKSA Bina Harapan Ciawi',
-      category: 'Remaja',
-      akreditasi: 'AKREDITASI B KEMENSOS',
-      regNo: 'NO: 410/LKSA/DINSOS/2023',
-      image: '/lksa3.jpg',
-      kecamatan: 'Ciawi',
-      location: 'Kecamatan Ciawi • Koridor Puncak Bogor',
-      address: 'Jl. Raya Puncak Ciawi No. 88, RT 01/RW 03, Kec. Ciawi, Kab. Bogor 16720',
-      anakCount: '38 Remaja',
-      usia: '12 - 18 Thn',
-      highlight: 'Keutamaan: Vokasi Otomotif, Tata Boga, & Komputer',
-      phone: '0857-1133-5599',
-      pengurus: 'Drs. H. M. Rizky',
-      bank: 'Bank BRI: 0012-01-098765-53-0 a.n LKSA Bina Harapan',
-      neededGoods: ['Komputer Bekas Layak Pakai', 'Bahan Pelatihan Boga', 'Alat Perbengkelan', 'Buku Keterampilan'],
-      desc: 'Fokus pembinaan kemandirian remaja siap kerja. Dilengkapi laboratorium komputer, bengkel kerja otomotif, serta sertifikasi keahlian tata boga.'
-    },
-    {
-      id: 'lksa-4',
-      name: 'Yayasan Mutiara Kasih Gunung Putri',
-      category: 'Anak',
-      akreditasi: 'AKREDITASI A KEMENSOS',
-      regNo: 'NO: 412/LKSA/DINSOS/2023',
-      image: '/lksa1.jpg',
-      kecamatan: 'Gunung Putri',
-      location: 'Kecamatan Gunung Putri • Kawasan Industri',
-      address: 'Jl. Raya Gunung Putri No. 102, Kec. Gunung Putri, Kab. Bogor 16961',
-      anakCount: '35 Anak',
-      usia: '6 - 15 Thn',
-      highlight: 'Keutamaan: Sanggar Seni, Musik, & Bahasa Inggris',
-      phone: '0812-3344-5566',
-      pengurus: 'Ir. Ahmad Subagja',
-      bank: 'Bank BCA: 882-019-3829 a.n Mutiara Kasih',
-      neededGoods: ['Buku Bahasa Inggris', 'Alat Kebersihan Panti', 'Bahan Sembako', 'Seragam Pramuka'],
-      desc: 'Membina 35 anak asuh dengan penguatan pendidikan akademik, kursus bahasa asing gratis, dan ekstrakurikuler seni kreatif.'
-    },
-    {
-      id: 'lksa-5',
-      name: 'LKSA Darul Husna Parung',
-      category: 'Remaja',
-      akreditasi: 'AKREDITASI B KEMENSOS',
-      regNo: 'NO: 415/LKSA/DINSOS/2023',
-      image: '/lksa3.jpg',
-      kecamatan: 'Parung',
-      location: 'Kecamatan Parung • Perbatasan Depok-Bogor',
-      address: 'Jl. Raya Parung Bogor No. 15, Kec. Parung, Kab. Bogor 16330',
-      anakCount: '30 Remaja',
-      usia: '13 - 18 Thn',
-      highlight: 'Keutamaan: Tahfidz Al-Qur\'an & Agr bisnis Hydroponik',
-      phone: '0815-7788-9900',
-      pengurus: 'Ust. H. Syamsudin',
-      bank: 'Bank Syariah Indonesia: 712-889-1002 a.n Darul Husna',
-      neededGoods: ['Mushaf Al-Qur\'an', 'Nutrisi Hydroponik & Benih', 'Beras 25kg', 'Karpet Sholat'],
-      desc: 'Mendidik remaja menjadi hafizh Al-Qur\'an sekaligus membekali wirausaha pertanian modern (hidroponik) & budidaya perikanan.'
-    }
-  ];
+ const [apiPantiList, setApiPantiList] = useState([]);
+ const [isLoading, setIsLoading] = useState(true);
+ const [loadError, setLoadError] = useState('');
 
   // Fetch data direktori dan wishlist panti dari backend FastAPI
-  useEffect(() => {
-    let isMounted = true;
-    async function fetchPanti() {
-      setIsLoading(true);
-      try {
-        const rawList = await pantiService.getPublicPantiList();
-        if (isMounted && Array.isArray(rawList) && rawList.length > 0) {
-          // Ambil wishlist panti secara paralel
-          const mapped = await Promise.all(
-            rawList.map(async (p, idx) => {
-              let goods = [];
-              try {
-                const wishlists = await pantiService.getPublicWishlist(p.id);
-                if (Array.isArray(wishlists)) {
-                  goods = wishlists.map(w => `${w.nama_barang} (${w.jumlah_terpenuhi}/${w.jumlah_kebutuhan})`);
-                }
-              } catch (e) {
-                // ignore
-              }
-              return {
-                id: p.id,
-                name: p.nama_panti,
-                category: p.jumlah_anak_saat_ini <= 30 ? 'Balita' : 'Anak',
-                akreditasi: p.status_akreditasi ? `AKREDITASI ${p.status_akreditasi} KEMENSOS` : 'TERDAFTAR RESMI',
-                regNo: `NO: ${p.id}/LKSA/DINSOS/2024`,
-                image: p.foto_panti || (idx % 2 === 0 ? '/lksa1.jpg' : '/lksa2.jpg'),
-                kecamatan: p.alamat ? p.alamat.split('•')[0].trim() : 'Kabupaten Bogor',
-                location: p.alamat || 'Kabupaten Bogor',
-                address: p.alamat || 'Alamat panti asuhan',
-                anakCount: `${p.jumlah_anak_saat_ini || 0} Anak`,
-                usia: '0 - 18 Thn',
-                highlight: p.deskripsi ? p.deskripsi.slice(0, 60) + '...' : 'Panti terakreditasi resmi Dinsos',
-                phone: p.nomor_kontak || '0812-9988-7711',
-                pengurus: 'Pengurus Resmi LKSA',
-                bank: p.rekening_bank ? `${p.nama_bank || 'Bank'}: ${p.rekening_bank} a.n ${p.atas_nama_rekening || p.nama_panti}` : 'Bank Mandiri: 133-00-1928374-1',
-                neededGoods: goods.length > 0 ? goods : ['Sembako & Beras', 'Seragam Sekolah'],
-                desc: p.deskripsi || 'Lembaga Kesejahteraan Sosial Anak terakreditasi Kemensos.'
-              };
-            })
-          );
-          if (isMounted) setApiPantiList(mapped);
-        }
-      } catch (err) {
-        console.warn('Backend API belum aktif, menggunakan data tersimpan:', err);
-      } finally {
-        if (isMounted) setIsLoading(false);
+useEffect(() => {
+  let isMounted = true;
+
+  async function fetchPanti() {
+    setIsLoading(true);
+    setLoadError('');
+
+    try {
+      const rawList = await pantiService.getPublicPantiList();
+
+      if (!Array.isArray(rawList)) {
+        throw new Error('Format data direktori tidak valid.');
+      }
+
+      const mapped = await Promise.all(
+        rawList.map(async (p, idx) => {
+          let goods = [];
+
+          try {
+            const wishlists = await pantiService.getPublicWishlist(p.id);
+
+            if (Array.isArray(wishlists)) {
+              goods = wishlists.map(
+                (w) =>
+                  `${w.nama_barang} (${w.jumlah_terpenuhi}/${w.jumlah_kebutuhan})`
+              );
+            }
+          } catch (error) {
+            console.warn('Wishlist panti gagal dimuat:', error);
+          }
+
+          return {
+            id: p.id,
+            name: p.nama_panti,
+            category:
+              p.jumlah_anak_saat_ini <= 30 ? 'Balita' : 'Anak',
+            akreditasi: p.status_akreditasi
+              ? `AKREDITASI ${p.status_akreditasi} KEMENSOS`
+              : 'TERDAFTAR RESMI',
+            regNo: `NO: ${p.id}/LKSA/DINSOS`,
+            image:
+              p.foto_panti ||
+              (idx % 2 === 0 ? '/lksa1.jpg' : '/lksa2.jpg'),
+            kecamatan: p.alamat
+              ? p.alamat.split('•')[0].trim()
+              : '-',
+            location: p.alamat || 'Alamat belum tersedia',
+            address: p.alamat || 'Alamat belum tersedia',
+            anakCount: `${p.jumlah_anak_saat_ini || 0} Anak`,
+            usia: '0 - 18 Thn',
+            highlight: p.deskripsi
+              ? p.deskripsi.slice(0, 60)
+              : 'Lembaga terdaftar',
+            phone: p.nomor_kontak || '-',
+            pengurus: 'Pengurus LKSA',
+            bank: p.rekening_bank
+              ? `${p.nama_bank || 'Bank'}: ${p.rekening_bank} a.n ${
+                  p.atas_nama_rekening || p.nama_panti
+                }`
+              : 'Informasi rekening belum tersedia',
+            neededGoods: goods,
+            desc: p.deskripsi || 'Informasi lembaga belum tersedia.',
+          };
+        })
+      );
+
+      if (isMounted) {
+        setApiPantiList(mapped);
+      }
+    } catch (error) {
+      console.error('Gagal memuat direktori LKSA:', error);
+
+      if (isMounted) {
+        setApiPantiList([]);
+        setLoadError(
+          'Direktori LKSA belum dapat dimuat. Silakan coba kembali.'
+        );
+      }
+    } finally {
+      if (isMounted) {
+        setIsLoading(false);
       }
     }
-    fetchPanti();
-    return () => { isMounted = false; };
-  }, []);
+  }
 
-  const displayPantiList = apiPantiList.length > 0 ? apiPantiList : pantiList;
+  fetchPanti();
+
+  return () => {
+    isMounted = false;
+  };
+}, []);
+
+
+ const displayPantiList = apiPantiList;
 
   // Filtering logic
   const filteredPanti = displayPantiList.filter((p) => {
@@ -304,8 +248,20 @@ export default function DirektoriPantiView({
           </div>
 
           {/* Cards Grid */}
-          <div className="panti-cards-grid">
-            {filteredPanti.map((panti) => (
+<div className="panti-cards-grid">
+  {isLoading && (
+    <p style={{ color: '#64748b', padding: '2rem', textAlign: 'center' }}>
+      Memuat data LKSA dari server...
+    </p>
+  )}
+
+  {!isLoading && loadError && (
+    <p style={{ color: '#dc2626', padding: '2rem', textAlign: 'center' }}>
+      {loadError}
+    </p>
+  )}
+
+  {!isLoading && !loadError && filteredPanti.map((panti) => (
               <div 
                 key={panti.id}
                 style={{
@@ -506,7 +462,7 @@ export default function DirektoriPantiView({
             ))}
           </div>
 
-          {filteredPanti.length === 0 && (
+          {!isLoading && !loadError && filteredPanti.length === 0 && (
             <div style={{ textAlign: 'center', padding: '4rem 1rem', background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
               <Building2 size={48} color="#94a3b8" style={{ marginBottom: '1rem' }} />
               <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0b1f5c', margin: '0 0 0.5rem 0' }}>

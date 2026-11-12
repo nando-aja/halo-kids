@@ -36,6 +36,9 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { AdminDocumentReview, DonationProofReview } from '../components/AiVerification';
+import FormPengajuanLKSA from '../components/LKSA/FormPengajuanLKSA';
+import StatusPengajuanLKSA from '../components/LKSA/StatusPengajuanLKSA';
+import PanelVerifikasiLKSA from '../components/LKSA/PanelVerifikasiLKSA';
 import {
   pantiService,
   donasiService,
@@ -89,7 +92,17 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
   const [superAdminTab, setSuperAdminTab] = useState('approval_panti'); // 'approval_panti' | 'supervisi_adopsi' | 'monitoring_hilang' | 'audit_donasi' | 'analitik_eksekutif'
 
   // Active Menu Tab for Admin Panti
-  const [pantiAdminTab, setPantiAdminTab] = useState('daftar_anak'); // 'daftar_anak' | 'input_donasi' | 'laporan_hilang_panti' | 'formulir_adopsi_panti' | 'volunteer_panti'
+const [pantiAdminTab, setPantiAdminTab] = useState(() => {
+  if (!currentUser?.managedPanti && currentUser?.lksaApplication) {
+    return 'status_pengajuan_lksa';
+  }
+
+  if (!currentUser?.managedPanti) {
+    return 'pendaftaran_lksa';
+  }
+
+  return 'daftar_anak';
+});
 
   // AI Verification Review Modal (PRD Single-Agent AI)
   const [showAiAdminReviewModal, setShowAiAdminReviewModal] = useState(false);
@@ -1289,8 +1302,7 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
               /* SUPER ADMIN MENU */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                 {[
-                  { id: 'approval_panti', label: '1. Approval & Status LKSA', icon: Building2, count: pantiRegistrations.filter(p => p.status.includes('Menunggu')).length },
-                  { id: 'supervisi_adopsi', label: '2. Supervisi Adopsi (PIPA)', icon: Users, count: adopsiApplications.length },
+                  { id: 'approval_panti', label: '1. Approval & Status LKSA', icon: Building2, count: null },
                   { id: 'monitoring_hilang', label: '3. Pengaduan & Kedaruratan', icon: ShieldAlert, count: complaintReports.filter(r => !r.status.includes('Selesai')).length },
                   { id: 'audit_donasi', label: '4. Audit & Map Donasi', icon: Wallet, count: null },
                   { id: 'analitik_eksekutif', label: '5. Dashboard Analitis', icon: TrendingUp, count: null }
@@ -1330,11 +1342,13 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
               /* ADMIN PANTI MENU */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                 {[
-                  { id: 'daftar_anak', label: '1. Daftar Anak Asuh Panti', icon: Users, count: pantiChildren.length },
-                  { id: 'input_donasi', label: '2. Input Donasi & Uang Masuk', icon: Package, count: null },
-                  { id: 'laporan_hilang_panti', label: '3. Pelaporan Anak Hilang', icon: ShieldAlert, count: lostChildReports.length },
-                  { id: 'formulir_adopsi_panti', label: '4. Permohonan Adopsi Anak', icon: Heart, count: adopsiApplications.length },
-                  { id: 'volunteer_panti', label: '5. Verifikasi Volunteer', icon: HeartHandshake, count: currentVolunteers.filter(v => v.status === 'Menunggu Persetujuan').length }
+                  { id: 'pendaftaran_lksa', label: '1. Pendaftaran Legalitas LKSA', icon: FileText, count: null },
+                  { id: 'status_pengajuan_lksa', label: '2. Status Pengajuan LKSA', icon: ShieldCheck, count: null },
+                  { id: 'daftar_anak', label: '3. Daftar Anak Asuh Panti', icon: Users, count: pantiChildren.length },
+                  { id: 'input_donasi', label: '4. Input Donasi & Uang Masuk', icon: Package, count: null },
+                  { id: 'laporan_hilang_panti', label: '5. Pelaporan Anak Hilang', icon: ShieldAlert, count: lostChildReports.length },
+                  { id: 'formulir_adopsi_panti', label: '6. Permohonan Adopsi Anak', icon: Heart, count: adopsiApplications.length },
+                  { id: 'volunteer_panti', label: '7. Verifikasi Volunteer', icon: HeartHandshake, count: currentVolunteers.filter(v => v.status === 'Menunggu Persetujuan').length }
                 ].map((menu) => (
                   <button
                     key={menu.id}
@@ -2002,77 +2016,13 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
           {dashboardRoleMode === 'superadmin' && (
             <div>
               {/* MODULE 1: MANAJEMEN & APPROVAL AKUN ADMIN PANTI */}
-              {superAdminTab === 'approval_panti' && (
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                    <div>
-                      <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0b1f5c', margin: 0 }}>
-                        1. Verifikasi Akun &amp; Legalitas LKSA Panti Asuhan
-                      </h2>
-                      <p style={{ fontSize: '0.875rem', color: '#64748b', margin: 0 }}>
-                        Persetujuan pendaftaran panti asuhan baru dan monitoring izin operasional tingkat kabupaten.
-                      </p>
-                    </div>
-                    <span style={{ background: '#dcfce7', color: '#15803d', padding: '0.35rem 0.85rem', borderRadius: '50px', fontSize: '0.8rem', fontWeight: 700 }}>
-                      ✔ 28 Panti Terdaftar Resmi
-                    </span>
-                  </div>
+{/* ========================================== */}
+{/* VERIFIKASI PENGAJUAN LKSA DINSOS */}
+{/* ========================================== */}
 
-                  {/* Table of Orphanage Approvals */}
-                  <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
-                      <thead>
-                        <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569' }}>
-                          <th style={{ padding: '1rem' }}>ID &amp; Nama Panti Asuhan</th>
-                          <th style={{ padding: '1rem' }}>Pengurus &amp; Kontak</th>
-                          <th style={{ padding: '1rem' }}>Kecamatan</th>
-                          <th style={{ padding: '1rem' }}>Akreditasi / Status</th>
-                          <th style={{ padding: '1rem', textAlign: 'right' }}>Aksi Approval</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pantiRegistrations.map((panti) => (
-                          <tr key={panti.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={{ padding: '1rem' }}>
-                              <strong style={{ color: '#0b1f5c', display: 'block' }}>{panti.name}</strong>
-                              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{panti.id} • {panti.email}</span>
-                            </td>
-                            <td style={{ padding: '1rem' }}>
-                              <span>{panti.pengurus}</span>
-                              <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>{panti.phone}</span>
-                            </td>
-                            <td style={{ padding: '1rem' }}>{panti.address}</td>
-                            <td style={{ padding: '1rem' }}>
-                              <span style={{
-                                background: panti.status.includes('Disetujui') ? '#dcfce7' : '#fef3c7',
-                                color: panti.status.includes('Disetujui') ? '#15803d' : '#92400e',
-                                padding: '0.2rem 0.6rem',
-                                borderRadius: '50px',
-                                fontSize: '0.725rem',
-                                fontWeight: 800
-                              }}>
-                                {panti.status}
-                              </span>
-                            </td>
-                            <td style={{ padding: '1rem', textAlign: 'right' }}>
-                              {panti.status.includes('Menunggu') ? (
-                                <button
-                                  onClick={() => handleApprovePanti(panti.id)}
-                                  style={{ background: '#15803d', color: '#fff', border: 'none', padding: '0.45rem 0.85rem', borderRadius: '6px', fontSize: '0.775rem', fontWeight: 700, cursor: 'pointer' }}
-                                >
-                                  ✔ Approve / Setujui Akun
-                                </button>
-                              ) : (
-                                <span style={{ color: '#059669', fontWeight: 700, fontSize: '0.775rem' }}>✔ Terverifikasi Active</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
+{superAdminTab === 'approval_panti' && (
+  <PanelVerifikasiLKSA />
+)}
 
               {/* MODULE 2: SUPERVISI DATA ANAK & PENGANGKATAN ANAK (ADOPSI - PIPA) */}
               {superAdminTab === 'supervisi_adopsi' && (
@@ -2717,6 +2667,33 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
           {/* ==================================================== */}
           {dashboardRoleMode === 'pantiadmin' && (
             <div>
+              {/* ========================================== */}
+{/* TAB PENDAFTARAN LKSA */}
+{/* ========================================== */}
+
+{pantiAdminTab === 'pendaftaran_lksa' && (
+  <FormPengajuanLKSA
+    onSubmitted={() => {
+      setPantiAdminTab('status_pengajuan_lksa');
+      showToast('Pengajuan LKSA berhasil dikirim.');
+    }}
+    onCancel={() => {
+      setPantiAdminTab('status_pengajuan_lksa');
+    }}
+  />
+)}
+
+{/* ========================================== */}
+{/* TAB STATUS PENGAJUAN LKSA */}
+{/* ========================================== */}
+
+{pantiAdminTab === 'status_pengajuan_lksa' && (
+  <StatusPengajuanLKSA
+    onStartApplication={() => {
+      setPantiAdminTab('pendaftaran_lksa');
+    }}
+  />
+)}
               {/* TAB 1: DAFTAR ANAK ASUH PANTI (REQ 2.1) */}
               {pantiAdminTab === 'daftar_anak' && (
                 <div>

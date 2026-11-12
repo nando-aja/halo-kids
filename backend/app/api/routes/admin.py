@@ -1,3 +1,16 @@
+from typing import Literal
+
+from pydantic import BaseModel
+
+from app.db.models.pengajuan_lksa import PengajuanLKSA
+from app.db.models.dokumen_pengajuan_lksa import DokumenPengajuanLKSA
+
+from app.schemas.pengajuan_lksa import (
+    PengajuanLKSAResponse,
+    DokumenPengajuanResponse,
+)
+
+from app.services.lksa_storage import create_lksa_signed_url
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
@@ -38,6 +51,30 @@ from app.services.storage import get_storage_absolute_path, save_upload_file
 from app.services.report_attachments import get_admin_signed_report_attachments
 
 router = APIRouter()
+# ==========================================
+# SCHEMA VERIFIKASI LKSA
+# ==========================================
+
+class DokumenLKSAReview(BaseModel):
+    status_verifikasi: Literal[
+        "valid",
+        "tidak_valid",
+        "perlu_perbaikan",
+    ]
+
+    catatan_verifikasi: str | None = None
+
+
+class PengajuanLKSAReview(BaseModel):
+    status_pengajuan: Literal[
+        "ditinjau",
+        "menunggu_tinjauan_manual",
+        "perlu_perbaikan",
+        "disetujui",
+        "ditolak",
+    ]
+
+    catatan_admin: str | None = None
 
 
 def validate_manager(
@@ -1038,3 +1075,468 @@ def delete_visit_event(
         raise HTTPException(404, "Jadwal kunjungan tidak ditemukan")
 
     return {"message": "Jadwal kunjungan dihapus"}
+
+# ==========================================
+# VERIFIKASI PENDAFTARAN LKSA
+# ==========================================
+
+def _get_lksa_application_or_404(
+    db: Session,
+    application_id: int,
+) -> PengajuanLKSA:
+
+    item = (
+        db.query(PengajuanLKSA)
+        .filter(PengajuanLKSA.id == application_id)
+        .first()
+    )
+
+    if item is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Pengajuan LKSA tidak ditemukan.",
+        )
+
+    return item
+
+
+def _build_lksa_admin_response(
+    db: Session,
+    item: PengajuanLKSA,
+) -> dict:
+
+    documents = (
+        db.query(DokumenPengajuanLKSA)
+        .filter(
+            DokumenPengajuanLKSA.id_pengajuan == item.id
+        )
+        .order_by(DokumenPengajuanLKSA.id.asc())
+        .all()
+    )
+
+    return {
+        "id": item.id,
+        "id_pengelola": item.id_pengelola,
+        "id_panti": item.id_panti,
+        "nama_panti": item.nama_panti,
+        "bentuk_lembaga": item.bentuk_lembaga,
+        "tahun_berdiri": item.tahun_berdiri,
+        "alamat": item.alamat,
+        "kontak": item.kontak,
+        "email_lembaga": item.email_lembaga,
+        "jumlah_anak_asuh": item.jumlah_anak_asuh,
+        "deskripsi": item.deskripsi,
+        "status_pengajuan": item.status_pengajuan,
+        "catatan_admin": item.catatan_admin,
+        "id_admin_verifikator": item.id_admin_verifikator,
+        "tanggal_diajukan": item.tanggal_diajukan,
+        "tanggal_verifikasi": item.tanggal_verifikasi,
+        "tanggal_dibuat": item.tanggal_dibuat,
+        "tanggal_diperbarui": item.tanggal_diperbarui,
+        "dokumen": documents,
+    }
+
+
+# ==========================================
+# DAFTAR PENGAJUAN LKSA
+# ==========================================
+
+@router.get(
+    "/pengajuan-lksa",
+    response_model=list[PengajuanLKSAResponse],
+)
+def get_lksa_applications(
+    status_pengajuan: str | None = None,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+
+    query = db.query(PengajuanLKSA)
+
+    if status_pengajuan:
+        allowed_statuses = {
+            "draft",
+            "diajukan",
+            "ditinjau",
+            "menunggu_tinjauan_manual",
+            "perlu_perbaikan",
+            "disetujui",
+            "ditolak",
+        }
+
+        if status_pengajuan not in allowed_statuses:
+            raise HTTPException(
+                status_code=422,
+                detail="Filter status pengajuan tidak valid.",
+            )
+
+        query = query.filter(
+            PengajuanLKSA.status_pengajuan == status_pengajuan
+        )
+
+    applications = (
+        query
+        .order_by(PengajuanLKSA.id.desc())
+        .all()
+    )
+
+    return [
+        _build_lksa_admin_response(db, item)
+        for item in applications
+    ]
+
+
+# ==========================================
+# DETAIL PENGAJUAN LKSA
+# ==========================================
+
+@router.get(
+    "/pengajuan-lksa/{application_id}",
+    response_model=PengajuanLKSAResponse,
+)
+def get_lksa_application_detail(
+    application_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+
+    item = _get_lksa_application_or_404(
+        db,
+        application_id,
+    )
+
+    return _build_lksa_admin_response(db, item)
+
+
+# ==========================================
+# SIGNED URL DOKUMEN LKSA
+# ==========================================
+
+@router.get(
+    "/pengajuan-lksa/{application_id}/dokumen/{document_id}/url",
+)
+def get_lksa_document_url_for_admin(
+    application_id: int,
+    document_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+
+    item = _get_lksa_application_or_404(
+        db,
+        application_id,
+    )
+
+    document = (
+        db.query(DokumenPengajuanLKSA)
+        .filter(
+            DokumenPengajuanLKSA.id == document_id,
+            DokumenPengajuanLKSA.id_pengajuan == item.id,
+        )
+        .first()
+    )
+
+    if document is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Dokumen LKSA tidak ditemukan.",
+        )
+
+    signed_url = create_lksa_signed_url(
+        document.bucket_name,
+        document.path_file,
+        expires_in=300,
+    )
+
+    return {
+        "signed_url": signed_url,
+        "expires_in": 300,
+    }
+
+
+# ==========================================
+# VERIFIKASI DOKUMEN LKSA
+# ==========================================
+
+@router.patch(
+    "/pengajuan-lksa/{application_id}/dokumen/{document_id}/status",
+    response_model=DokumenPengajuanResponse,
+)
+def review_lksa_document(
+    application_id: int,
+    document_id: int,
+    data: DokumenLKSAReview,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+
+    application = _get_lksa_application_or_404(
+        db,
+        application_id,
+    )
+
+    if application.status_pengajuan in {
+        "disetujui",
+        "ditolak",
+    }:
+        raise HTTPException(
+            status_code=409,
+            detail="Pengajuan sudah memiliki keputusan final.",
+        )
+
+    document = (
+        db.query(DokumenPengajuanLKSA)
+        .filter(
+            DokumenPengajuanLKSA.id == document_id,
+            DokumenPengajuanLKSA.id_pengajuan == application.id,
+        )
+        .first()
+    )
+
+    if document is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Dokumen tidak ditemukan.",
+        )
+
+    document.status_verifikasi = data.status_verifikasi
+    document.catatan_verifikasi = data.catatan_verifikasi
+    document.id_admin_verifikator = current_user.id
+    document.tanggal_verifikasi = datetime.utcnow()
+
+    # Jika ada dokumen perlu perbaikan, pengajuan menunggu pengelola.
+    if data.status_verifikasi in {
+        "tidak_valid",
+        "perlu_perbaikan",
+    }:
+        application.status_pengajuan = "perlu_perbaikan"
+
+    db.commit()
+    db.refresh(document)
+
+    return document
+
+
+# ==========================================
+# KEPUTUSAN ADMIN TERHADAP PENGAJUAN LKSA
+# ==========================================
+
+@router.patch(
+    "/pengajuan-lksa/{application_id}/status",
+    response_model=PengajuanLKSAResponse,
+)
+def update_lksa_application_status(
+    application_id: int,
+    data: PengajuanLKSAReview,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+
+    application = _get_lksa_application_or_404(
+        db,
+        application_id,
+    )
+
+    if application.status_pengajuan in {
+        "disetujui",
+        "ditolak",
+    }:
+        raise HTTPException(
+            status_code=409,
+            detail="Pengajuan sudah memiliki keputusan final.",
+        )
+
+    manager = (
+        db.query(User)
+        .filter(
+            User.id == application.id_pengelola,
+            User.peran == "pengelola-panti",
+        )
+        .first()
+    )
+
+    if manager is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Akun pengelola LKSA tidak ditemukan.",
+        )
+
+    if data.status_pengajuan in {
+        "perlu_perbaikan",
+        "ditolak",
+    } and not (data.catatan_admin or "").strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Catatan admin wajib diisi untuk keputusan ini.",
+        )
+
+    # ======================================
+    # VALIDASI DOKUMEN SEBELUM MENYETUJUI
+    # ======================================
+
+    if data.status_pengajuan == "disetujui":
+
+        documents = (
+            db.query(DokumenPengajuanLKSA)
+            .filter(
+                DokumenPengajuanLKSA.id_pengajuan == application.id
+            )
+            .all()
+        )
+
+        required_types = {
+            "ad_art",
+            "domisili",
+            "npwp_lembaga",
+            "struktur_organisasi",
+            "ktp_pengurus",
+            "skck_pengurus",
+            "surat_pernyataan",
+            "proposal_lksa",
+        }
+
+        if application.bentuk_lembaga == "berbadan_hukum":
+            required_types.update({
+                "akta_pendirian",
+                "sk_pengesahan_badan_hukum",
+            })
+        else:
+            required_types.add(
+                "surat_keterangan_terdaftar_kemendagri"
+            )
+
+        valid_types = {
+            doc.jenis_dokumen
+            for doc in documents
+            if doc.status_verifikasi == "valid"
+        }
+
+        missing_types = sorted(
+            required_types - valid_types
+        )
+
+        if missing_types:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": (
+                        "Pengajuan belum dapat disetujui. "
+                        "Pastikan semua dokumen wajib sudah valid."
+                    ),
+                    "dokumen_belum_valid": missing_types,
+                },
+            )
+
+        # ==================================
+        # BUAT / HUBUNGKAN DATA PANTI
+        # ==================================
+
+        panti = None
+
+        if application.id_panti is not None:
+            panti = (
+                db.query(PantiAsuhan)
+                .filter(
+                    PantiAsuhan.id == application.id_panti
+                )
+                .first()
+            )
+
+        # Untuk akun lama yang sudah memiliki panti bawaan,
+        # gunakan record lama agar relasi donasi dan wishlist
+        # tidak terputus.
+        if panti is None:
+            panti = (
+                db.query(PantiAsuhan)
+                .filter(
+                    PantiAsuhan.id_admin_pengelola == manager.id
+                )
+                .first()
+            )
+
+        try:
+            if panti is None:
+                panti = PantiAsuhan(
+                    nama_panti=application.nama_panti,
+                    alamat=application.alamat,
+                    kontak=application.kontak,
+                    status_akreditasi=None,
+                    jumlah_anak_asuh=application.jumlah_anak_asuh,
+                    id_admin_pengelola=manager.id,
+                )
+
+                db.add(panti)
+                db.flush()
+
+            else:
+                if panti.id_admin_pengelola not in {
+                    None,
+                    manager.id,
+                }:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            "Data panti sudah terhubung "
+                            "dengan pengelola lain."
+                        ),
+                    )
+
+                # Deteksi data placeholder dari registrasi lama.
+                is_old_placeholder = (
+                    panti.nama_panti == f"LKSA {manager.nama}"
+                    and panti.alamat == "Kabupaten Bogor"
+                    and panti.jumlah_anak_asuh == 20
+                    and panti.status_akreditasi == "AKREDITASI B"
+                )
+
+                panti.nama_panti = application.nama_panti
+                panti.alamat = application.alamat
+                panti.kontak = application.kontak
+                panti.jumlah_anak_asuh = application.jumlah_anak_asuh
+                panti.id_admin_pengelola = manager.id
+
+                if is_old_placeholder:
+                    panti.status_akreditasi = None
+
+            application.id_panti = panti.id
+
+        except HTTPException:
+            db.rollback()
+            raise
+
+        except Exception:
+            db.rollback()
+            raise
+
+    # ======================================
+    # SIMPAN KEPUTUSAN
+    # ======================================
+
+    application.status_pengajuan = data.status_pengajuan
+    application.catatan_admin = data.catatan_admin
+    application.id_admin_verifikator = current_user.id
+    application.tanggal_verifikasi = datetime.utcnow()
+
+    try:
+        create_notification(
+            db,
+            manager.id,
+            "Status Pengajuan LKSA",
+            (
+                f"Pengajuan LKSA {application.nama_panti} "
+                f"berubah menjadi {data.status_pengajuan}. "
+                f"{data.catatan_admin or ''}"
+            ),
+        )
+
+        db.commit()
+        db.refresh(application)
+
+    except Exception:
+        db.rollback()
+        raise
+
+    return _build_lksa_admin_response(
+        db,
+        application,
+    )

@@ -10,6 +10,7 @@ from app.db.models.adoption import PengajuanAdopsi
 from app.db.models.donation import Donasi
 from app.db.models.notification import Notifikasi
 from app.db.models.panti import PantiAsuhan
+from app.db.models.pengajuan_lksa import PengajuanLKSA
 from app.db.models.report import LaporanPengaduan
 from app.db.models.user import User
 from app.db.models.volunteer import Relawan
@@ -332,7 +333,21 @@ def create_donation(
             status_code=404,
             detail="Panti tidak ditemukan",
         )
+    # Pastikan LKSA sudah disetujui oleh Admin Dinsos.
+    pengajuan_disetujui = (
+        db.query(PengajuanLKSA.id)
+        .filter(
+            PengajuanLKSA.id_panti == panti.id,
+            PengajuanLKSA.status_pengajuan == "disetujui",
+        )
+        .first()
+    )
 
+    if pengajuan_disetujui is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Donasi hanya dapat diberikan kepada LKSA yang telah disetujui Dinsos.",
+        )
 
     # ==========================================
     # 2. PERSIAPAN DATA DONASI
@@ -675,13 +690,45 @@ def apply_volunteer(
         data.dokumen_identitas = f"storage/identitas_relawan/{data.dokumen_identitas.split('/')[-1]}"
     stored_file_exists(data.dokumen_identitas)
 
-    if data.id_panti is not None:
-        panti = db.query(PantiAsuhan).filter(PantiAsuhan.id == data.id_panti).first()
-        if panti is None:
-            raise HTTPException(404, "Panti tujuan tidak ditemukan")
-        panti_tujuan = data.panti_tujuan or panti.nama_panti
-    else:
-        panti_tujuan = data.panti_tujuan
+
+    # Relawan wajib memilih LKSA yang sudah disetujui Dinsos.
+    if data.id_panti is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Silakan pilih LKSA resmi sebagai tujuan relawan.",
+        )
+
+    panti = (
+        db.query(PantiAsuhan)
+        .filter(PantiAsuhan.id == data.id_panti)
+        .first()
+    )
+
+    if panti is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Panti tujuan tidak ditemukan.",
+        )
+
+    pengajuan_terbaru = (
+        db.query(PengajuanLKSA)
+        .filter(PengajuanLKSA.id_panti == panti.id)
+        .order_by(PengajuanLKSA.id.desc())
+        .first()
+    )
+
+    if (
+        pengajuan_terbaru is None
+        or pengajuan_terbaru.status_pengajuan != "disetujui"
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Pendaftaran relawan hanya tersedia untuk LKSA yang telah disetujui Dinsos.",
+        )
+
+    # Nama panti diambil langsung dari database,
+    # bukan dari teks bebas yang dikirim pengguna.
+    panti_tujuan = panti.nama_panti
 
     item = Relawan(
         id_user=current_user.id,
