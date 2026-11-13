@@ -216,6 +216,21 @@ const [viewMode, setViewMode] = useState(() => {
     setActiveTab('beranda');
   };
 
+  // Gabungkan data terbaru ke sesi (mis. status pengajuan LKSA berubah
+  // setelah Dinsos memutuskan) dan simpan agar tetap ada setelah refresh.
+  const handleUserUpdate = (patch) => {
+    setCurrentUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...patch };
+      try {
+        localStorage.setItem('halokids_active_session', JSON.stringify(next));
+      } catch (e) {
+        console.error(e);
+      }
+      return next;
+    });
+  };
+
   const handleLogout = () => {
     authService.logout();
     setIsLoggedIn(false);
@@ -400,6 +415,7 @@ const [viewMode, setViewMode] = useState(() => {
       {viewMode === 'dashboard' && canUseAdminDashboard(currentUser) ? (
         <DashboardUtama 
           currentUser={currentUser}
+          onUserUpdate={handleUserUpdate}
           onLogout={handleLogout}
           volunteerList={volunteerRegistrations}
           setVolunteerList={setVolunteerRegistrations}

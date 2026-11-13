@@ -148,8 +148,42 @@ def create_pengajuan_adopsi(
 
     paths = validate_initial_documents(data)
 
+    # Panti tujuan (opsional) harus LKSA resmi yang sudah disetujui Dinsos.
+    # Tanpa panti tujuan = rekomendasi terbuka Dinsos.
+    target_panti = None
+
+    if data.id_panti is not None:
+        target_panti = (
+            db.query(PantiAsuhan)
+            .filter(PantiAsuhan.id == data.id_panti)
+            .first()
+        )
+
+        if target_panti is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Panti tujuan tidak ditemukan.",
+            )
+
+        pengajuan_panti = (
+            db.query(PengajuanLKSA)
+            .filter(PengajuanLKSA.id_panti == target_panti.id)
+            .order_by(PengajuanLKSA.id.desc())
+            .first()
+        )
+
+        if (
+            pengajuan_panti is None
+            or pengajuan_panti.status_pengajuan != "disetujui"
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Pengajuan adopsi hanya dapat ditujukan ke LKSA yang telah disetujui Dinsos.",
+            )
+
     item = PengajuanAdopsi(
         id_user=current_user.id,
+        id_panti=target_panti.id if target_panti else None,
         nama_pemohon=data.nama_pemohon,
         tanggal_lahir_pemohon=data.tanggal_lahir_pemohon,
         tanggal_pernikahan=data.tanggal_pernikahan,
@@ -188,6 +222,16 @@ def create_pengajuan_adopsi(
         "Pengajuan Adopsi",
         notification_message,
     )
+
+    # Pengelola panti tujuan (dan hanya dia) ikut menerima pemberitahuan.
+    if target_panti is not None and target_panti.id_admin_pengelola:
+        create_notification(
+            db,
+            target_panti.id_admin_pengelola,
+            "Pengajuan Adopsi Baru",
+            f"Pengajuan adopsi #{item.id} dari {data.nama_pemohon} "
+            f"ditujukan ke {target_panti.nama_panti}.",
+        )
 
     # Admin Dinsos yang memverifikasi juga perlu tahu ada pengajuan baru.
     notify_admins(

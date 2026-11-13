@@ -43,6 +43,7 @@ import FormPengajuanLKSA from '../components/LKSA/FormPengajuanLKSA';
 import StatusPengajuanLKSA from '../components/LKSA/StatusPengajuanLKSA';
 import PanelVerifikasiLKSA from '../components/LKSA/PanelVerifikasiLKSA';
 import {
+  authService,
   pantiService,
   donasiService,
   adopsiService,
@@ -50,7 +51,7 @@ import {
   pengaduanService
 } from '../api';
 
-export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUser, volunteerList, setVolunteerList }) {
+export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUser, onUserUpdate, volunteerList, setVolunteerList }) {
   const getRoleMode = (u) => {
     if (!u) return 'user';
 
@@ -94,18 +95,84 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
   // Active Menu Tab for Super Admin
   const [superAdminTab, setSuperAdminTab] = useState('approval_panti'); // 'approval_panti' | 'supervisi_adopsi' | 'monitoring_hilang' | 'audit_donasi' | 'analitik_eksekutif' | 'pengumuman'
 
-  // Active Menu Tab for Admin Panti
-const [pantiAdminTab, setPantiAdminTab] = useState(() => {
-  if (!currentUser?.managedPanti && currentUser?.lksaApplication) {
-    return 'status_pengajuan_lksa';
-  }
+  // ----------------------------------------------------
+  // GERBANG AKSES PENGELOLA PANTI (LKSA)
+  // ----------------------------------------------------
+  // Sebelum pengajuan LKSA DISETUJUI Dinsos, pengelola hanya boleh
+  // melihat 2 menu: Pendaftaran Legalitas & Status Pengajuan.
+  // Setelah disetujui, kedua menu itu hilang dan fitur operasional
+  // panti terbuka. Backend juga menolak (403) akses operasional
+  // sebelum disetujui, jadi ini hanya menyamakan tampilan.
+  const LKSA_ONLY_TABS = ['pendaftaran_lksa', 'status_pengajuan_lksa'];
+  const isPantiApproved =
+    currentUser?.lksaApplicationStatus === 'disetujui' ||
+    Boolean(currentUser?.managedPanti);
 
-  if (!currentUser?.managedPanti) {
-    return 'pendaftaran_lksa';
-  }
+  // Active Menu Tab for Admin Panti (nilai mentah pilihan pengguna)
+  const [pantiAdminTabState, setPantiAdminTab] = useState(() => {
+    if (currentUser?.lksaApplicationStatus === 'disetujui' || currentUser?.managedPanti) {
+      return 'daftar_anak';
+    }
+    return currentUser?.lksaApplication ? 'status_pengajuan_lksa' : 'pendaftaran_lksa';
+  });
 
-  return 'daftar_anak';
-});
+  // Tab yang benar-benar dipakai: dipaksa sesuai status persetujuan,
+  // sehingga tidak ada celah membuka fitur lain lewat state/notifikasi.
+  const pantiAdminTab = isPantiApproved
+    ? (LKSA_ONLY_TABS.includes(pantiAdminTabState) ? 'daftar_anak' : pantiAdminTabState)
+    : (LKSA_ONLY_TABS.includes(pantiAdminTabState)
+        ? pantiAdminTabState
+        : (currentUser?.lksaApplication ? 'status_pengajuan_lksa' : 'pendaftaran_lksa'));
+
+  // Banner "Selamat" yang muncul sekali saat status berubah jadi disetujui.
+  const [showApprovedBanner, setShowApprovedBanner] = useState(false);
+  const wasApprovedRef = React.useRef(isPantiApproved);
+
+  useEffect(() => {
+    if (dashboardRoleMode !== 'pantiadmin') return;
+
+    if (isPantiApproved && !wasApprovedRef.current) {
+      setPantiAdminTab('daftar_anak');
+      setShowApprovedBanner(true);
+      showToast('Selamat! Pengajuan LKSA Anda disetujui Dinsos. Semua fitur panti kini terbuka.');
+    }
+
+    wasApprovedRef.current = isPantiApproved;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPantiApproved, dashboardRoleMode]);
+
+  // Sinkronkan status pengajuan selama belum disetujui: saat dashboard
+  // dibuka, tiap 20 detik, dan ketika tab browser kembali aktif. Kalau
+  // Dinsos sudah memutuskan, sesi diperbarui tanpa perlu login ulang.
+  const lastStatusRef = React.useRef(currentUser?.lksaApplicationStatus ?? null);
+
+  const syncLksaStatus = React.useCallback(async () => {
+    const patch = await authService.fetchPengelolaStatus();
+    if (!patch) return;
+
+    if (patch.lksaApplicationStatus !== lastStatusRef.current) {
+      lastStatusRef.current = patch.lksaApplicationStatus;
+      if (onUserUpdate) onUserUpdate(patch);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onUserUpdate]);
+
+  useEffect(() => {
+    if (dashboardRoleMode !== 'pantiadmin' || isPantiApproved) return undefined;
+
+    const tick = () => {
+      if (document.visibilityState === 'visible') syncLksaStatus();
+    };
+
+    tick();
+    const timer = setInterval(tick, 20000);
+    document.addEventListener('visibilitychange', tick);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [dashboardRoleMode, isPantiApproved, syncLksaStatus]);
 
   // Klik notifikasi di lonceng membuka halaman terkait sesuai peran.
   const handleNotificationNavigate = (tab) => {
@@ -181,13 +248,34 @@ const [pantiAdminTab, setPantiAdminTab] = useState(() => {
   ];
 
   const [localVolunteers, setLocalVolunteers] = useState(defaultVolunteers);
-  const currentVolunteers = volunteerList && volunteerList.length > 0 ? volunteerList : localVolunteers;
+  // Pengelola panti hanya melihat relawan yang mendaftar ke panti-nya sendiri.
+  const currentVolunteers = dashboardRoleMode === 'pantiadmin'
+    ? pantiVolunteers
+    : (volunteerList && volunteerList.length > 0 ? volunteerList : localVolunteers);
 
   const [volunteerFilter, setVolunteerFilter] = useState('Semua');
   const [volunteerSearch, setVolunteerSearch] = useState('');
   const [selectedKtpDoc, setSelectedKtpDoc] = useState(null);
 
+  const handlePantiVolunteerDecision = async (vol, backendStatus, uiStatus) => {
+    try {
+      await pantiService.updatePantiRelawanStatus(vol.rawId, backendStatus);
+    } catch (err) {
+      showToast(err?.friendlyMessage || 'Gagal menyimpan keputusan relawan.');
+      return;
+    }
+    setPantiVolunteers(prev => prev.map(v => v.id === vol.id ? { ...v, status: uiStatus } : v));
+    showToast(
+      backendStatus === 'disetujui'
+        ? `Relawan ${vol.nama} disetujui. Notifikasi dikirim ke pendaftar.`
+        : `Pendaftaran relawan ${vol.nama} ditolak.`
+    );
+  };
+
   const handleApproveVolunteer = async (vol) => {
+    if (dashboardRoleMode === 'pantiadmin') {
+      return handlePantiVolunteerDecision(vol, 'disetujui', 'Disetujui');
+    }
     try {
       const targetId = vol.rawId || (typeof vol.id === 'string' && vol.id.includes('-') ? parseInt(vol.id.split('-')[1], 10) : vol.id);
       if (targetId && !isNaN(targetId)) {
@@ -203,6 +291,9 @@ const [pantiAdminTab, setPantiAdminTab] = useState(() => {
   };
 
   const handleRejectVolunteer = async (vol) => {
+    if (dashboardRoleMode === 'pantiadmin') {
+      return handlePantiVolunteerDecision(vol, 'ditolak', 'Ditolak');
+    }
     try {
       const targetId = vol.rawId || (typeof vol.id === 'string' && vol.id.includes('-') ? parseInt(vol.id.split('-')[1], 10) : vol.id);
       if (targetId && !isNaN(targetId)) {
@@ -234,11 +325,6 @@ const [pantiAdminTab, setPantiAdminTab] = useState(() => {
   const [adopsiApplications, setAdopsiApplications] = useState([]);
 
   // 3. Control Pelaporan Anak Hilang & Eskalasi (Super Admin Req #3)
-  // Data contoh anak hilang untuk panel pencocokan panti (bukan daftar pengaduan sensitif).
-  const [lostChildReports, setLostChildReports] = useState([
-    { id: 'HILANG-DEMO-099', childName: 'Contoh kasus sintetis Rian (L, 8 Thn)', reporter: 'Pemeran sintetis', location: 'Kec. Cibinong', date: 'Data demo', photo: '/lksa1.jpg', status: 'Dalam simulasi', officer: 'Tim Demo' },
-    { id: 'HILANG-DEMO-082', childName: 'Contoh kasus sintetis Nayla (P, 5 Thn)', reporter: 'Pemeran sintetis', location: 'Kec. Ciawi', date: 'Data demo', photo: '/lksa2.jpg', status: 'Dalam simulasi', officer: 'Tim Demo' }
-  ]);
   // Pengaduan sensitif selalu berasal dari API admin dan dipisah dari data contoh panti.
   const [complaintReports, setComplaintReports] = useState([]);
   const [reportSyncStatus, setReportSyncStatus] = useState('loading');
@@ -259,30 +345,23 @@ const [pantiAdminTab, setPantiAdminTab] = useState(() => {
   // ----------------------------------------------------
 
   // 1. Daftar Anak Asuh Panti (Admin Panti Req 2.1)
-  const [pantiChildren, setPantiChildren] = useState([
-    { id: 'ANK-001', name: 'Ahmad Faiz', age: '3 Tahun', gender: 'Laki-Laki', status: 'Yatim Piatu', education: 'PAUD Belum Sekolah', joinDate: '12 Jan 2023', health: 'Sehat Walafiat' },
-    { id: 'ANK-002', name: 'Siti Nurhaliza', age: '6 Tahun', gender: 'Perempuan', status: 'Yatim', education: 'TK B', joinDate: '05 Mar 2022', health: 'Sehat' },
-    { id: 'ANK-003', name: 'Budi Santoso', age: '14 Tahun', gender: 'Laki-Laki', status: 'Anak Terlantar', education: 'SMP Kelas 8', joinDate: '19 Aug 2021', health: 'Sehat' },
-    { id: 'ANK-004', name: 'Annisa Putri', age: '10 Tahun', gender: 'Perempuan', status: 'Piatu', education: 'SD Kelas 5', joinDate: '10 Feb 2024', health: 'Sehat' }
-  ]);
+  // Data anak asuh diambil dari backend per panti (multi-tenant);
+  // tidak ada data contoh yang dibagi antar akun panti.
+  const [pantiChildren, setPantiChildren] = useState([]);
+  const [pantiVolunteers, setPantiVolunteers] = useState([]);
+  const [pantiDataLoaded, setPantiDataLoaded] = useState(false);
 
   const [showAddChildModal, setShowAddChildModal] = useState(false);
   const [newChildName, setNewChildName] = useState('');
   const [newChildAge, setNewChildAge] = useState('');
   const [newChildStatus, setNewChildStatus] = useState('Yatim Piatu');
+  const [newChildGender, setNewChildGender] = useState('Laki-Laki');
+  const [newChildEducation, setNewChildEducation] = useState('');
 
   // 2. Input Donasi Barang Dibutuhkan & Keterangan Uang Masuk (Admin Panti Req 2.2)
-  const [pantiNeededGoods, setPantiNeededGoods] = useState([
-    { id: 1, item: 'Sembako Beras 10kg & Minyak', qty: '20 Paket', status: 'Mendesak / Barang Habis' },
-    { id: 2, item: 'Seragam SD/SMP Lengkap', qty: '15 Pasang', status: 'Hampir Habis' },
-    { id: 3, item: 'Buku Tulis & Alat Sekolah', qty: '40 Paket', status: 'Tersedia Sebagian' }
-  ]);
+  const [pantiNeededGoods, setPantiNeededGoods] = useState([]);
 
-  const [pantiCashIncome, setPantiCashIncome] = useState([
-    { id: 'TRX-9941', date: 'Hari ini, 11:20 WIB', donor: 'Hamba Allah (BCA)', amount: 'Rp 1.500.000', program: 'Donasi Sembako Panti' },
-    { id: 'TRX-9938', date: 'Kemarin', donor: 'Bpk. Rahmat (QRIS)', amount: 'Rp 500.000', program: 'Operasional Panti' },
-    { id: 'TRX-9920', date: '04 Oct 2024', donor: 'PT Mitra Mulia (Mandiri)', amount: 'Rp 10.000.000', program: 'Beasiswa Anak Asuh' }
-  ]);
+  const [pantiCashIncome, setPantiCashIncome] = useState([]);
 
   const [newNeedItem, setNewNeedItem] = useState('');
   const [newNeedQty, setNewNeedQty] = useState('');
@@ -341,11 +420,38 @@ const [pantiAdminTab, setPantiAdminTab] = useState(() => {
             console.warn('My donasi sync:', e);
           }
           if (isMounted) setIsUserDataLoading(false);
-        } else if (dashboardRoleMode === 'pantiadmin') {
-          // 1. Ambil Wishlist Panti LKSA dari API
+        } else if (dashboardRoleMode === 'pantiadmin' && isPantiApproved) {
+          // Endpoint operasional panti menjawab 403 sebelum pengajuan disetujui,
+          // jadi hanya dipanggil setelah disetujui. Semua data difilter backend
+          // berdasarkan panti milik akun ini; hasil kosong tetap ditampilkan kosong.
+          const pantiLabel = currentUser?.pantiName || currentUser?.managedPanti?.nama_panti || 'Panti Anda';
+
+          // 1. Anak asuh
+          try {
+            const rawChildren = await pantiService.getChildren();
+            if (isMounted && Array.isArray(rawChildren)) {
+              setPantiChildren(rawChildren.map(c => ({
+                id: `ANK-${String(c.id).padStart(3, '0')}`,
+                rawId: c.id,
+                name: c.nama,
+                age: c.usia != null ? `${c.usia} Tahun` : '-',
+                gender: c.jenis_kelamin || '-',
+                status: c.status_kesejahteraan || '-',
+                education: c.pendidikan || '-',
+                joinDate: c.tanggal_masuk
+                  ? new Date(c.tanggal_masuk).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
+                  : '-',
+                health: c.kondisi_kesehatan || '-'
+              })));
+            }
+          } catch (cErr) {
+            console.warn('Children sync:', cErr);
+          }
+
+          // 2. Wishlist Panti LKSA
           try {
             const rawWishlist = await pantiService.getWishlist();
-            if (isMounted && Array.isArray(rawWishlist) && rawWishlist.length > 0) {
+            if (isMounted && Array.isArray(rawWishlist)) {
               setPantiNeededGoods(rawWishlist.map(w => ({
                 id: w.id,
                 item: w.nama_barang,
@@ -354,13 +460,13 @@ const [pantiAdminTab, setPantiAdminTab] = useState(() => {
               })));
             }
           } catch (wErr) {
-            console.warn('Wishlist sync fallback:', wErr);
+            console.warn('Wishlist sync:', wErr);
           }
 
-          // 2. Ambil Rekapitulasi Donasi Masuk Panti dari API
+          // 3. Donasi masuk panti
           try {
             const rawDonasi = await pantiService.getPantiDonations();
-            if (isMounted && Array.isArray(rawDonasi) && rawDonasi.length > 0) {
+            if (isMounted && Array.isArray(rawDonasi)) {
               setPantiCashIncome(rawDonasi.map(d => ({
                 id: `TRX-${d.id}`,
                 rawId: d.id,
@@ -374,25 +480,57 @@ const [pantiAdminTab, setPantiAdminTab] = useState(() => {
               })));
             }
           } catch (dErr) {
-            console.warn('Panti donation sync fallback:', dErr);
+            console.warn('Panti donation sync:', dErr);
           }
 
-          // 3. Ambil Permohonan Adopsi Masuk Panti dari API
+          // 4. Permohonan adopsi yang ditujukan ke panti ini
           try {
             const rawPantiAdoptions = await pantiService.getPantiAdoptions();
-            if (isMounted && Array.isArray(rawPantiAdoptions) && rawPantiAdoptions.length > 0) {
+            if (isMounted && Array.isArray(rawPantiAdoptions)) {
               setPantiAdoptions(rawPantiAdoptions.map(a => ({
                 id: `PIPA-2024-${a.id}`,
                 rawId: a.id,
                 applicant: a.nama_pemohon,
-                targetChild: 'Anak Asuh Panti',
-                originPanti: 'LKSA Kasih Bunda Mandiri',
-                status: a.status === 'diverifikasi' ? 'Disetujui / Rekomendasi Terbit' : a.status === 'ditolak' ? 'Ditolak' : 'Menunggu Verifikasi Berkas Awal'
+                targetChild: 'Calon Anak Asuh',
+                originPanti: pantiLabel,
+                status: ['diverifikasi', 'disetujui'].includes(a.status)
+                  ? 'Disetujui / Rekomendasi Terbit'
+                  : a.status === 'ditolak'
+                    ? 'Ditolak'
+                    : 'Menunggu Verifikasi Berkas Awal'
               })));
             }
           } catch (adpErr) {
-            console.warn('Panti adoptions sync fallback:', adpErr);
+            console.warn('Panti adoptions sync:', adpErr);
           }
+
+          // 5. Relawan yang mendaftar ke panti ini
+          try {
+            const rawRelawan = await pantiService.getPantiRelawan();
+            if (isMounted && Array.isArray(rawRelawan)) {
+              setPantiVolunteers(rawRelawan.map(v => ({
+                id: `VOL-${v.id}`,
+                rawId: v.id,
+                nama: v.nama || 'Tanpa Nama',
+                nomorHp: v.nomor_hp || '',
+                alamat: v.alamat,
+                usia: v.usia,
+                bidang: v.bidang || '',
+                pantiTujuan: v.panti_tujuan || pantiLabel,
+                tanggal: v.tanggal,
+                sesiWaktu: v.sesi_waktu,
+                tujuanKerelawanan: v.tujuan_kerelawanan,
+                ktpFileName: 'scan_identitas_relawan.jpg',
+                ktpFileSize: '',
+                status: v.status === 'disetujui' ? 'Disetujui' : v.status === 'ditolak' ? 'Ditolak' : 'Menunggu Persetujuan',
+                submittedAt: v.created_at ? new Date(v.created_at).toLocaleDateString('id-ID') : 'Baru saja'
+              })));
+            }
+          } catch (vErr) {
+            console.warn('Panti volunteers sync:', vErr);
+          }
+
+          if (isMounted) setPantiDataLoaded(true);
         } else if (dashboardRoleMode === 'superadmin') {
           // 1. Ambil Antrean Adopsi COTA
           try {
@@ -512,7 +650,7 @@ const [pantiAdminTab, setPantiAdminTab] = useState(() => {
       isMounted = false;
       window.removeEventListener('halokids:data_updated', handleDataUpdated);
     };
-  }, [dashboardRoleMode, currentUser]);
+  }, [dashboardRoleMode, currentUser, isPantiApproved]);
   // Memuat audit donasi hanya ketika menu Audit Donasi dibuka.
   // Hook ini berada di tingkat teratas komponen, bukan di dalam fungsi async.
   useEffect(() => {
@@ -1036,24 +1174,43 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
 
 
   // Handlers for Admin Panti
-  const handleAddChild = (e) => {
+  const handleAddChild = async (e) => {
     e.preventDefault();
-    if (!newChildName) return;
-    const newChild = {
-      id: `ANK-00${pantiChildren.length + 1}`,
-      name: newChildName,
-      age: `${newChildAge} Tahun`,
-      gender: 'Laki-Laki',
-      status: newChildStatus,
-      education: 'SD',
-      joinDate: 'Hari Ini',
-      health: 'Sehat'
-    };
-    setPantiChildren([newChild, ...pantiChildren]);
-    setShowAddChildModal(false);
-    setNewChildName('');
-    setNewChildAge('');
-    showToast(`Anak asuh baru (${newChild.name}) berhasil ditambahkan ke database panti!`);
+    if (!newChildName.trim()) return;
+
+    try {
+      const c = await pantiService.createChild({
+        nama: newChildName.trim(),
+        usia: newChildAge !== '' ? parseInt(newChildAge, 10) : null,
+        jenis_kelamin: newChildGender,
+        status_kesejahteraan: newChildStatus,
+        pendidikan: newChildEducation.trim() || null,
+        tanggal_masuk: new Date().toISOString().slice(0, 10)
+      });
+
+      setPantiChildren(prev => [{
+        id: `ANK-${String(c.id).padStart(3, '0')}`,
+        rawId: c.id,
+        name: c.nama,
+        age: c.usia != null ? `${c.usia} Tahun` : '-',
+        gender: c.jenis_kelamin || '-',
+        status: c.status_kesejahteraan || '-',
+        education: c.pendidikan || '-',
+        joinDate: c.tanggal_masuk
+          ? new Date(c.tanggal_masuk).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
+          : '-',
+        health: c.kondisi_kesehatan || '-'
+      }, ...prev]);
+
+      setShowAddChildModal(false);
+      setNewChildName('');
+      setNewChildAge('');
+      setNewChildGender('Laki-Laki');
+      setNewChildEducation('');
+      showToast(`Anak asuh baru (${c.nama}) berhasil disimpan ke database panti.`);
+    } catch (err) {
+      showToast(err?.friendlyMessage || 'Gagal menyimpan data anak asuh.');
+    }
   };
 
   const handleAddGoodsNeed = async (e) => {
@@ -1078,17 +1235,8 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
       ]);
       showToast('Kebutuhan barang panti berhasil ditambahkan ke database & ditayangkan di direktori publik!');
     } catch (err) {
-      console.warn('Fallback local wishlist add:', err);
-      setPantiNeededGoods([
-        ...pantiNeededGoods,
-        {
-          id: Date.now(),
-          item: newNeedItem.trim(),
-          qty: newNeedQty.trim() || '10 Unit',
-          status: urgency
-        }
-      ]);
-      showToast('Kebutuhan barang panti tersimpan.');
+      showToast(err?.friendlyMessage || 'Gagal menyimpan kebutuhan barang panti.');
+      return;
     }
     setNewNeedItem('');
     setNewNeedQty('');
@@ -1097,11 +1245,10 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
 
   const handleDeleteGoodsNeed = async (wishlistId) => {
     try {
-      if (typeof wishlistId === 'number' && wishlistId < 1000000000) {
-        await pantiService.deleteWishlist(wishlistId);
-      }
+      await pantiService.deleteWishlist(wishlistId);
     } catch (err) {
-      console.warn('Delete wishlist error:', err);
+      showToast(err?.friendlyMessage || 'Gagal menghapus kebutuhan barang.');
+      return;
     }
     setPantiNeededGoods(prev => prev.filter(item => item.id !== wishlistId));
     showToast('Barang kebutuhan berhasil dihapus dari daftar wishlist.');
@@ -1109,11 +1256,10 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
 
   const handleVerifyPantiDonation = async (cashItem, newStatus) => {
     try {
-      if (cashItem.rawId) {
-        await pantiService.updateDonationStatus(cashItem.rawId, newStatus);
-      }
+      await pantiService.updateDonationStatus(cashItem.rawId, newStatus);
     } catch (err) {
-      console.warn('Update donation status error:', err);
+      showToast(err?.friendlyMessage || 'Gagal mengubah status donasi.');
+      return;
     }
     setPantiCashIncome(prev => prev.map(c => c.id === cashItem.id ? { ...c, status: newStatus } : c));
     showToast(`Status donasi ${cashItem.id} berhasil diubah menjadi ${newStatus}!`);
@@ -1359,15 +1505,19 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
             ) : (
               /* ADMIN PANTI MENU */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                {[
-                  { id: 'pendaftaran_lksa', label: '1. Pendaftaran Legalitas LKSA', icon: FileText, count: null },
-                  { id: 'status_pengajuan_lksa', label: '2. Status Pengajuan LKSA', icon: ShieldCheck, count: null },
-                  { id: 'daftar_anak', label: '3. Daftar Anak Asuh Panti', icon: Users, count: pantiChildren.length },
-                  { id: 'input_donasi', label: '4. Input Donasi & Uang Masuk', icon: Package, count: null },
-                  { id: 'laporan_hilang_panti', label: '5. Pelaporan Anak Hilang', icon: ShieldAlert, count: lostChildReports.length },
-                  { id: 'formulir_adopsi_panti', label: '6. Permohonan Adopsi Anak', icon: Heart, count: adopsiApplications.length },
-                  { id: 'volunteer_panti', label: '7. Verifikasi Volunteer', icon: HeartHandshake, count: currentVolunteers.filter(v => v.status === 'Menunggu Persetujuan').length }
-                ].map((menu) => (
+                {(isPantiApproved
+                  ? [
+                      { id: 'daftar_anak', label: '1. Daftar Anak Asuh Panti', icon: Users, count: pantiChildren.length },
+                      { id: 'input_donasi', label: '2. Input Donasi & Uang Masuk', icon: Package, count: null },
+                      { id: 'laporan_hilang_panti', label: '3. Pelaporan Anak Hilang', icon: ShieldAlert, count: null },
+                      { id: 'formulir_adopsi_panti', label: '4. Permohonan Adopsi Anak', icon: Heart, count: pantiAdoptions.filter(a => a.status.includes('Menunggu')).length },
+                      { id: 'volunteer_panti', label: '5. Verifikasi Volunteer', icon: HeartHandshake, count: currentVolunteers.filter(v => v.status === 'Menunggu Persetujuan').length }
+                    ]
+                  : [
+                      { id: 'pendaftaran_lksa', label: '1. Pendaftaran Legalitas LKSA', icon: FileText, count: null },
+                      { id: 'status_pengajuan_lksa', label: '2. Status Pengajuan LKSA', icon: ShieldCheck, count: null }
+                    ]
+                ).map((menu) => (
                   <button
                     key={menu.id}
                     onClick={() => setPantiAdminTab(menu.id)}
@@ -2690,6 +2840,37 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
           {/* ==================================================== */}
           {dashboardRoleMode === 'pantiadmin' && (
             <div>
+              {isPantiApproved && showApprovedBanner && (
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  gap: '1rem',
+                  background: '#ecfdf5',
+                  border: '1px solid #6ee7b7',
+                  color: '#065f46',
+                  borderRadius: '12px',
+                  padding: '1rem 1.25rem',
+                  marginBottom: '1.25rem'
+                }}>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: '0.95rem' }}>
+                      🎉 Pengajuan LKSA Anda telah disetujui Dinsos
+                    </div>
+                    <div style={{ fontSize: '0.825rem', marginTop: '0.25rem' }}>
+                      Menu pendaftaran sudah tidak diperlukan lagi. Anda kini dapat mengelola anak asuh,
+                      donasi, laporan, adopsi, dan relawan panti.
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowApprovedBanner(false)}
+                    aria-label="Tutup"
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#065f46' }}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              )}
               {/* ========================================== */}
 {/* TAB PENDAFTARAN LKSA */}
 {/* ========================================== */}
@@ -2699,6 +2880,7 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
     onSubmitted={() => {
       setPantiAdminTab('status_pengajuan_lksa');
       showToast('Pengajuan LKSA berhasil dikirim.');
+      syncLksaStatus();
     }}
     onCancel={() => {
       setPantiAdminTab('status_pengajuan_lksa');
@@ -2712,6 +2894,7 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
 
 {pantiAdminTab === 'status_pengajuan_lksa' && (
   <StatusPengajuanLKSA
+    key={currentUser?.lksaApplicationStatus || 'belum-ada'}
     onStartApplication={() => {
       setPantiAdminTab('pendaftaran_lksa');
     }}
@@ -2723,7 +2906,7 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                     <div>
                       <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#78350f', margin: 0 }}>
-                        1. Data Anak Asuh Panti (LKSA Kasih Bunda Mandiri)
+                        1. Data Anak Asuh Panti ({currentUser?.pantiName || 'Panti Anda'})
                       </h2>
                       <p style={{ fontSize: '0.875rem', color: '#64748b', margin: 0 }}>
                         Kelola data anak asuh terdaftar di panti ini.
@@ -2750,6 +2933,15 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
                         </tr>
                       </thead>
                       <tbody>
+                        {pantiChildren.length === 0 && (
+                          <tr>
+                            <td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+                              {pantiDataLoaded
+                                ? 'Belum ada data anak asuh di panti Anda. Klik "Tambah Anak Asuh Baru" untuk mulai mengisi.'
+                                : 'Memuat data anak asuh...'}
+                            </td>
+                          </tr>
+                        )}
                         {pantiChildren.map((child) => (
                           <tr key={child.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                             <td style={{ padding: '0.85rem' }}>
@@ -2921,20 +3113,14 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
                     </p>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                    {lostChildReports.map((r) => (
-                      <div key={r.id} style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1rem 1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <strong style={{ fontSize: '1rem', color: '#0b1f5c' }}>{r.childName}</strong>
-                          <span style={{ fontSize: '0.8rem', color: '#475569', display: 'block', marginTop: '2px' }}>
-                            Pelapor: {r.reporter} • Hilang di: {r.location}
-                          </span>
-                        </div>
-                        <button onClick={() => showToast(`Kategori pencocokan panti untuk ${r.childName} berhasil dicatat.`)} style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '0.45rem 0.85rem', borderRadius: '6px', fontSize: '0.775rem', fontWeight: 700, cursor: 'pointer' }}>
-                          Cek Ditemukan di PantiIni
-                        </button>
-                      </div>
-                    ))}
+                  <div style={{ background: '#ffffff', border: '1px dashed #cbd5e1', borderRadius: '12px', padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+                    <ShieldAlert size={28} color="#94a3b8" style={{ marginBottom: '0.5rem' }} />
+                    <div style={{ fontWeight: 700, color: '#334155', marginBottom: '0.25rem' }}>
+                      Belum ada laporan anak hilang untuk panti Anda
+                    </div>
+                    <div style={{ fontSize: '0.825rem' }}>
+                      Laporan dari masyarakat saat ini ditangani Dinsos. Laporan yang diteruskan ke panti Anda akan muncul di sini.
+                    </div>
                   </div>
                 </div>
               )}
@@ -2952,7 +3138,14 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    {(pantiAdoptions.length > 0 ? pantiAdoptions : adopsiApplications).map((adp) => (
+                    {pantiAdoptions.length === 0 && (
+                      <div style={{ background: '#ffffff', border: '1px dashed #cbd5e1', borderRadius: '12px', padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+                        {pantiDataLoaded
+                          ? 'Belum ada permohonan adopsi yang ditujukan ke panti Anda.'
+                          : 'Memuat permohonan adopsi...'}
+                      </div>
+                    )}
+                    {pantiAdoptions.map((adp) => (
                       <div key={adp.id} style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                         <div>
                           <strong style={{ fontSize: '1.05rem', color: '#0b1f5c', display: 'block' }}>Pemohon: {adp.applicant}</strong>
@@ -3001,7 +3194,7 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
                         <span style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', fontSize: '0.725rem', fontWeight: 800, padding: '0.15rem 0.55rem', borderRadius: '50px' }}>
                           PANEL ADMIN PANTI • PERSETUJUAN RELAWAN
                         </span>
-                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>LKSA Kasih Bunda Mandiri</span>
+                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{currentUser?.pantiName || 'Panti Anda'}</span>
                       </div>
                       <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#78350f', margin: 0 }}>
                         5. Verifikasi &amp; Persetujuan Formulir Volunteer
@@ -3477,6 +3670,33 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
                   value={newChildAge}
                   onChange={(e) => setNewChildAge(e.target.value)}
                   required
+                  style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '0.35rem' }}>
+                  Jenis Kelamin
+                </label>
+                <select
+                  value={newChildGender}
+                  onChange={(e) => setNewChildGender(e.target.value)}
+                  style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff' }}
+                >
+                  <option value="Laki-Laki">Laki-Laki</option>
+                  <option value="Perempuan">Perempuan</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '0.35rem' }}>
+                  Pendidikan (opsional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Contoh: SD Kelas 3"
+                  value={newChildEducation}
+                  onChange={(e) => setNewChildEducation(e.target.value)}
                   style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
                 />
               </div>

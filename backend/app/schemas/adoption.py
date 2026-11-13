@@ -39,7 +39,8 @@ class AdoptionBase(BaseModel):
 
 
 class AdoptionCreate(AdoptionBase):
-    pass
+    # Panti tujuan (opsional). Kosong = rekomendasi terbuka Dinsos.
+    id_panti: int | None = Field(default=None, ge=1)
 
 
 class AdoptionAdditionalDocument(BaseModel):

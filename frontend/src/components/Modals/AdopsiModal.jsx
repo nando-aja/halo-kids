@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   X,
   FileText,
@@ -23,7 +23,7 @@ import {
   Bot
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { adopsiService } from '../../api';
+import { adopsiService, pantiService } from '../../api';
 
 // Berkas COTA bertipe: tiap jenis dokumen diunggah ke backend (Supabase) dan path aslinya
 // dikirim ke pengajuan. Sebelumnya form mengirim path contoh (ktp_sample.jpg) tanpa unggahan.
@@ -74,6 +74,20 @@ function UploadSlot({ label, file, required, onPick, onClear }) {
 }
 
 export default function AdopsiModal({ isOpen, onClose }) {
+  // Hook ini sengaja diletakkan sebelum early return agar urutan hook konsisten.
+  // Daftar panti resmi (sudah disetujui Dinsos) diambil dari backend saat modal dibuka.
+  const [pantiOptions, setPantiOptions] = useState([]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    let active = true;
+    pantiService.getPublicPantiList()
+      .then((list) => { if (active && Array.isArray(list)) setPantiOptions(list); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   // Active Tab: 'panduan' | 'kelayakan' | 'formulir' | 'lacak'
@@ -108,7 +122,8 @@ export default function AdopsiModal({ isOpen, onClose }) {
     penghasilan: 'Rp 10.000.000 - Rp 20.000.000',
     alamat: '',
     kecamatan: 'Kec. Cibinong',
-    pantiTujuan: 'Panti Balita Tunas Bangsa',
+    pantiId: '',
+    pantiTujuan: 'Rekomendasi Langsung Dinsos',
     tanggalLahirSuami: '',
     tanggalPernikahan: ''
   });
@@ -318,7 +333,7 @@ export default function AdopsiModal({ isOpen, onClose }) {
         tanggal_pernikahan: formData.tanggalPernikahan,
         nomor_kontak: formData.noWa,
         alamat: `${formData.alamat}, ${formData.kecamatan}`,
-        panti_id: 1,
+        id_panti: formData.pantiId ? Number(formData.pantiId) : null,
         status_pernikahan: 'menikah',
         lama_menikah_tahun: lamaMenikah,
         alasan_adopsi: `Permohonan resmi pengangkatan anak melalui HaloKids Dinsos untuk ${formData.pantiTujuan}`,
@@ -1128,15 +1143,21 @@ export default function AdopsiModal({ isOpen, onClose }) {
                           Pilihan Panti Asuhan / Lembaga Asal:
                         </label>
                         <select
-                          value={formData.pantiTujuan}
-                          onChange={(e) => setFormData({ ...formData, pantiTujuan: e.target.value })}
+                          value={formData.pantiId}
+                          onChange={(e) => {
+                            const chosen = pantiOptions.find((p) => String(p.id) === e.target.value);
+                            setFormData({
+                              ...formData,
+                              pantiId: e.target.value,
+                              pantiTujuan: chosen ? chosen.nama_panti : 'Rekomendasi Langsung Dinsos'
+                            });
+                          }}
                           style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff' }}
                         >
-                          <option value="Panti Balita Tunas Bangsa">Panti Balita Tunas Bangsa (Cibinong)</option>
-                          <option value="LKSA Kasih Bunda Mandiri">LKSA Kasih Bunda Mandiri (Cibinong)</option>
-                          <option value="Yayasan Mutiara Kasih">Yayasan Mutiara Kasih (Gunung Putri)</option>
-                          <option value="LKSA Nurul Hidayah">LKSA Nurul Hidayah (Cileungsi)</option>
-                          <option value="Rekomendasi Langsung Dinsos">Rekomendasi Terbuka Dinsos Kabupaten</option>
+                          <option value="">Rekomendasi Terbuka Dinsos Kabupaten</option>
+                          {pantiOptions.map((p) => (
+                            <option key={p.id} value={String(p.id)}>{p.nama_panti}</option>
+                          ))}
                         </select>
                       </div>
 

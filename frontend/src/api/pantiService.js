@@ -354,6 +354,44 @@ export const pantiService = {
   },
 
 
+  // ---------- Anak asuh (hanya milik panti yang sedang login) ----------
+
+  async getChildren() {
+    const response = await apiClient.get('/api/panti/anak-asuh');
+    return response.data;
+  },
+
+  async createChild(data) {
+    const response = await apiClient.post('/api/panti/anak-asuh', data);
+    return response.data;
+  },
+
+  async updateChild(childId, data) {
+    const response = await apiClient.put(`/api/panti/anak-asuh/${childId}`, data);
+    return response.data;
+  },
+
+  async deleteChild(childId) {
+    const response = await apiClient.delete(`/api/panti/anak-asuh/${childId}`);
+    return response.data;
+  },
+
+  // ---------- Relawan yang mendaftar ke panti ini saja ----------
+
+  async getPantiRelawan() {
+    const response = await apiClient.get('/api/panti/relawan');
+    return response.data;
+  },
+
+  async updatePantiRelawanStatus(volunteerId, newStatus) {
+    const response = await apiClient.patch(
+      `/api/panti/relawan/${volunteerId}/status`,
+      null,
+      { params: { new_status: newStatus } }
+    );
+    return response.data;
+  },
+
   async recommendAdoption(
     adoptionId,
     action = 'rekomendasikan'

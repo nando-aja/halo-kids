@@ -79,6 +79,15 @@ class PengajuanAdopsi(Base):
         nullable=False
     )
 
+    # Panti tujuan pemohon. NULL = rekomendasi terbuka Dinsos (tidak
+    # terlihat oleh panti mana pun). Dipakai untuk memisahkan data per panti.
+    id_panti = Column(
+        Integer,
+        ForeignKey("panti_asuhan.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+
     tanggal_pengajuan = Column(
         DateTime(timezone=True),
         server_default=func.now(),

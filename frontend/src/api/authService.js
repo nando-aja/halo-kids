@@ -303,6 +303,54 @@ export const authService = {
 
 
   // ==========================================
+  // STATUS PENGAJUAN LKSA TERBARU (PENGELOLA PANTI)
+  // ==========================================
+  //
+  // Sesi disimpan saat login, jadi keputusan Dinsos yang terjadi
+  // sesudahnya tidak ikut terbawa. Fungsi ini mengambil status
+  // terbaru dan mengembalikan potongan profil yang siap digabung
+  // ke sesi. Mengembalikan null jika status belum bisa dipastikan
+  // (mis. jaringan putus), supaya sesi lama tidak ditimpa data kosong.
+
+  async fetchPengelolaStatus() {
+    let application = null;
+
+    try {
+      const res = await apiClient.get('/api/pengajuan-lksa/me');
+      application = res.data;
+    } catch (error) {
+      // 404 = memang belum pernah mengajukan; selain itu gagal dimuat.
+      if (error?.response?.status !== 404) return null;
+    }
+
+    const status = application?.status_pengajuan || null;
+
+    const patch = {
+      lksaApplication: application,
+      lksaApplicationStatus: status,
+      managedPanti: null,
+      pantiName: null,
+    };
+
+    // Data panti resmi baru ada setelah pengajuan disetujui.
+    if (status === 'disetujui') {
+      try {
+        const pantiRes = await apiClient.get('/api/panti/me');
+
+        if (pantiRes.data) {
+          patch.managedPanti = pantiRes.data;
+          patch.pantiName = pantiRes.data.nama_panti;
+        }
+      } catch {
+        // Status sudah disetujui; data panti dicoba lagi pada sinkronisasi berikutnya.
+      }
+    }
+
+    return patch;
+  },
+
+
+  // ==========================================
   // SESSION
   // ==========================================
 

@@ -11,6 +11,7 @@ from app.db.models.notification import Notifikasi
 from app.db.models.report_audit import AuditLogPengaduan
 from app.db.models.refresh_token import AuthRefreshToken
 from app.db.models.announcement import Pengumuman
+from app.db.models.anak_asuh import AnakAsuh
 
 __all__ = [
     "User",
@@ -25,6 +26,7 @@ __all__ = [
     "Notifikasi",
     "AuthRefreshToken",
     "Pengumuman",
+    "AnakAsuh",
     "LaporanPengaduan",
     "Donasi",
     "WishlistPanti",
