@@ -4,7 +4,7 @@ import {
   Building2, PhoneCall, FileCheck2, EyeOff, LogIn, ClipboardList, BadgeCheck, UserPlus
 } from 'lucide-react';
 
-const SLIDE_INTERVAL_MS = 7000;
+const SLIDE_INTERVAL_MS = 5000;
 
 export default function HeroSection({
   onOpenLapor,
@@ -16,8 +16,6 @@ export default function HeroSection({
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const touchStartX = useRef(null);
-  const elapsedRef = useRef(0);
-  const tabsRef = useRef(null);
 
   const slides = [
     {
@@ -87,8 +85,9 @@ export default function HeroSection({
         { label: 'Laporkan Sekarang', icon: Megaphone, onClick: onOpenLapor, variant: 'red' },
         { label: 'Hubungi Hotline', icon: PhoneCall, onClick: onOpenHotline, variant: 'outline' }
       ],
-      image: '/lksa1.jpg',
-      imageAlt: 'Anak-anak membaca buku bersama di perpustakaan panti',
+      image: '/lapor.jpg',
+      imagePos: '30% center',
+      imageAlt: 'Anak duduk murung memeluk lutut di lorong rumah',
       tag: { icon: Megaphone, iconColor: '#fca5a5', text: 'Kanal Darurat 24/7' },
       quote: '"Anak yang aman adalah tanggung jawab kita bersama."',
       quoteSrc: 'Layanan Pengaduan Dinsos',
@@ -117,38 +116,15 @@ export default function HeroSection({
   ];
 
   const goTo = useCallback((i) => {
-    elapsedRef.current = 0;
     setIndex((i + slides.length) % slides.length);
   }, [slides.length]);
 
-  // Autoplay berbasis timer JS (tidak bergantung pada animasi CSS / pengaturan reduce-motion OS).
-  // Progres disimpan di elapsedRef sehingga melanjutkan dari titik terakhir setelah jeda.
+  // Autoplay: pindah slide tiap SLIDE_INTERVAL_MS. Timer di-reset setiap slide berganti
+  // (termasuk saat diklik manual) dan berhenti selama kursor/keyboard ada di hero.
   useEffect(() => {
-    const fill = tabsRef.current?.querySelector('.hero-tab-fill');
-    if (fill) fill.style.transform = `scaleX(${Math.min(elapsedRef.current / SLIDE_INTERVAL_MS, 1)})`;
     if (paused) return undefined;
-
-    let raf;
-    let last = performance.now();
-    const tick = (now) => {
-      if (document.hidden) {
-        last = now;
-      } else {
-        elapsedRef.current += now - last;
-        last = now;
-        const p = Math.min(elapsedRef.current / SLIDE_INTERVAL_MS, 1);
-        const el = tabsRef.current?.querySelector('.hero-tab-fill');
-        if (el) el.style.transform = `scaleX(${p})`;
-        if (p >= 1) {
-          elapsedRef.current = 0;
-          setIndex((i) => (i + 1) % slides.length);
-          return;
-        }
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    const t = setTimeout(() => setIndex((i) => (i + 1) % slides.length), SLIDE_INTERVAL_MS);
+    return () => clearTimeout(t);
   }, [index, paused, slides.length]);
 
   const handleTabKey = (e) => {
@@ -195,12 +171,16 @@ export default function HeroSection({
       }}></div>
 
       <div className="container">
-        {/* Semua slide ditumpuk di satu sel grid, jadi tinggi section mengikuti slide terpanjang (tidak loncat) */}
+        {/* Semua slide berjajar horizontal di dalam track; track digeser untuk pindah slide */}
         <div
           className="hero-stage"
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
+         <div
+          className="hero-track"
+          style={{ transform: `translateX(calc(${-index * 100}% - ${index * 3}rem))` }}
+         >
           {slides.map((s, i) => {
             const active = i === index;
             const BadgeIcon = s.badge.icon;
@@ -319,6 +299,7 @@ export default function HeroSection({
                         src={s.image}
                         alt={s.imageAlt}
                         loading={i === 0 ? 'eager' : 'lazy'}
+                        style={{ objectPosition: s.imagePos || 'center' }}
                         className="hero-img"
                       />
 
@@ -361,10 +342,11 @@ export default function HeroSection({
               </div>
             );
           })}
+         </div>
         </div>
 
-        {/* Navigasi slide: tab bertanda progres, otomatis pindah tiap beberapa detik */}
-        <div className="hero-tabs" role="tablist" aria-label="Pilih slide" ref={tabsRef}>
+        {/* Navigasi slide: titik-titik */}
+        <div className="hero-dots" role="tablist" aria-label="Pilih slide">
           {slides.map((s, i) => {
             const active = i === index;
             return (
@@ -374,17 +356,13 @@ export default function HeroSection({
                 role="tab"
                 aria-selected={active}
                 aria-controls={`hero-slide-${s.id}`}
+                aria-label={`Slide ${i + 1}: ${s.tab}`}
                 tabIndex={active ? 0 : -1}
                 onClick={() => goTo(i)}
                 onKeyDown={handleTabKey}
-                className={`hero-tab ${active ? 'is-active' : ''}`}
+                className={`hero-dot ${active ? 'is-active' : ''}`}
               >
-                <span className="hero-tab-label">{s.tab}</span>
-                <span className="hero-tab-track">
-                  {active && (
-                    <span key={index} className="hero-tab-fill" />
-                  )}
-                </span>
+                <span className="hero-dot-mark" />
               </button>
             );
           })}
@@ -392,20 +370,29 @@ export default function HeroSection({
       </div>
 
       <style>{`
-        .hero-stage { display: grid; }
+        .hero-stage {
+          overflow: hidden;
+          /* ruang ekstra supaya bayangan & kartu melayang tidak terpotong */
+          padding: 1.5rem 1rem 2.25rem;
+          margin: -1.5rem -1rem -2.25rem;
+        }
+        .hero-track {
+          display: flex;
+          gap: 3rem;
+          transition: transform 0.6s cubic-bezier(0.65, 0, 0.35, 1);
+          will-change: transform;
+        }
         .hero-slide {
-          grid-area: 1 / 1;
+          flex: 0 0 100%;
+          min-width: 0;
+          display: flex;
+          align-items: center;
           opacity: 0;
-          visibility: hidden;
           pointer-events: none;
-          transition: opacity 0.45s ease, visibility 0s linear 0.45s;
+          transition: opacity 0.5s ease;
         }
-        .hero-slide.is-active {
-          opacity: 1;
-          visibility: visible;
-          pointer-events: auto;
-          transition: opacity 0.45s ease, visibility 0s linear 0s;
-        }
+        .hero-slide.is-active { opacity: 1; pointer-events: auto; }
+        .hero-slide > .hero-grid { width: 100%; }
         .hero-grid {
           display: grid;
           grid-template-columns: 1.1fr 0.9fr;
@@ -506,40 +493,35 @@ export default function HeroSection({
           display: flex; align-items: center; gap: 0.75rem;
         }
 
-        .hero-tabs {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 0.75rem;
-          margin-top: 2.25rem;
+        .hero-dots {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 0.1rem;
+          margin-top: 1.75rem;
         }
-        .hero-tab {
-          justify-content: space-between;
-          background: none; border: none; cursor: pointer; text-align: left;
-          padding: 0.25rem 0 0 0;
-          display: flex; flex-direction: column; gap: 0.5rem;
-          font-family: var(--font-heading);
+        .hero-dot {
+          background: none; border: none; cursor: pointer;
+          padding: 0.6rem 0.3rem;
+          display: inline-flex; align-items: center;
         }
-        .hero-tab:focus-visible { outline: 3px solid #93c5fd; outline-offset: 4px; border-radius: 6px; }
-        .hero-tab-label { font-size: 0.8rem; font-weight: 600; color: #64748b; transition: color 0.2s; }
-        .hero-tab:hover .hero-tab-label { color: #0b1f5c; }
-        .hero-tab.is-active .hero-tab-label { color: #0b1f5c; font-weight: 700; }
-        .hero-tab-track { display: block; height: 3px; border-radius: 3px; background: #cbd5e1; overflow: hidden; }
-        .hero-tab-fill {
-          display: block; height: 100%; width: 100%;
-          background: #1d4ed8;
-          transform-origin: left center;
-          transform: scaleX(0);
+        .hero-dot:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; border-radius: 999px; }
+        .hero-dot-mark {
+          display: block; width: 10px; height: 10px; border-radius: 999px;
+          background: #cbd5e1;
+          transition: width 0.35s ease, background-color 0.25s ease;
         }
+        .hero-dot:hover .hero-dot-mark { background: #94a3b8; }
+        .hero-dot.is-active .hero-dot-mark { width: 28px; background: #1d4ed8; }
 
         @media (max-width: 900px) {
           .hero-grid { grid-template-columns: 1fr; gap: 1.75rem; }
           .hero-img { height: 280px; }
-          .hero-tabs { margin-top: 1.5rem; gap: 0.5rem; }
-          .hero-tab-label { font-size: 0.7rem; }
+          .hero-dots { margin-top: 1.25rem; }
           .hero-cta { flex: 1 1 100%; }
         }
         @media (prefers-reduced-motion: reduce) {
-          .hero-slide, .hero-slide.is-active { transition: none; }
+          .hero-track, .hero-slide { transition: none; }
           .hero-cta:hover { transform: none; }
         }
       `}</style>
