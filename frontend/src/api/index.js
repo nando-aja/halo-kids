@@ -13,6 +13,7 @@ export {
 } from './authService';
 
 export { default as pantiService } from './pantiService';
+export { default as notificationService } from './notificationService';
 export { default as adminService } from './adminService';
 export { default as donasiService } from './donasiService';
 export { default as pengaduanService } from './pengaduanService';

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -501,10 +501,11 @@ def analyze_donation_proof(
     response_model=list[NotificationResponse],
 )
 def get_panti_notifications(
+    limit: int = Query(50, ge=1, le=200),
     current_user: User = Depends(require_pengelola_panti),
     db: Session = Depends(get_db),
 ):
-    return get_user_notifications(db, current_user.id)
+    return get_user_notifications(db, current_user.id, limit)
 
 
 @router.patch("/notifikasi/read-all")

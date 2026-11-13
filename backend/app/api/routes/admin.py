@@ -14,7 +14,7 @@ from app.services.lksa_storage import create_lksa_signed_url
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -25,6 +25,7 @@ from app.db.models.adoption import PengajuanAdopsi
 from app.db.models.donation import Donasi
 from app.db.models.dana import LaporanDana
 from app.db.models.gallery import GaleriPanti
+from app.db.models.announcement import Pengumuman
 from app.db.models.notification import Notifikasi
 from app.db.models.panti import PantiAsuhan
 from app.db.models.report import LaporanPengaduan
@@ -34,6 +35,10 @@ from app.db.models.wishlist import WishlistPanti
 from app.schemas.adoption import AdoptionResponse, AdoptionStatus
 from app.schemas.calendar import VisitEventCreate, VisitEventResponse, VisitEventUpdate
 from app.schemas.donation import DonationResponse, DonationStatus
+from app.schemas.announcement import (
+    AnnouncementCreate,
+    AnnouncementResponse,
+)
 from app.schemas.notification import NotificationResponse
 from app.schemas.panti import PantiCreate, PantiResponse, PantiUpdate
 from app.schemas.report import ReportResponse, ReportStatus
@@ -43,6 +48,7 @@ from app.services.ai_service import analyze_adoption_documents, analyze_transfer
 from app.services import visit_calendar
 from app.db.models.report_audit import AuditLogPengaduan
 from app.services.notification_service import (
+    create_announcement,
     create_notification,
     mark_all_notifications_read,
     mark_notification_read,
@@ -881,6 +887,7 @@ def upload_laporan_pengawasan(
     response_model=list[NotificationResponse],
 )
 def get_admin_notifications(
+    limit: int = Query(50, ge=1, le=200),
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -888,8 +895,77 @@ def get_admin_notifications(
         db.query(Notifikasi)
         .filter(Notifikasi.id_user == current_user.id)
         .order_by(Notifikasi.id.desc())
+        .limit(limit)
         .all()
     )
+
+
+# ==========================================
+# PENGUMUMAN PUBLIK (dikelola Super Admin)
+# ==========================================
+
+@router.get(
+    "/pengumuman",
+    response_model=list[AnnouncementResponse],
+)
+def list_announcements_for_admin(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Semua pengumuman, termasuk yang sudah dinonaktifkan."""
+    return (
+        db.query(Pengumuman)
+        .order_by(Pengumuman.id.desc())
+        .limit(200)
+        .all()
+    )
+
+
+@router.post(
+    "/pengumuman",
+    response_model=AnnouncementResponse,
+    status_code=201,
+)
+def create_public_announcement(
+    data: AnnouncementCreate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    item = create_announcement(
+        db,
+        data.judul.strip(),
+        data.pesan.strip(),
+        data.kategori,
+        creator_id=current_user.id,
+    )
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.delete(
+    "/pengumuman/{announcement_id}",
+    response_model=AnnouncementResponse,
+)
+def deactivate_public_announcement(
+    announcement_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Menonaktifkan (bukan menghapus permanen) sebuah pengumuman."""
+    item = (
+        db.query(Pengumuman)
+        .filter(Pengumuman.id == announcement_id)
+        .first()
+    )
+
+    if item is None:
+        raise HTTPException(404, "Pengumuman tidak ditemukan")
+
+    item.aktif = False
+    db.commit()
+    db.refresh(item)
+    return item
 
 
 @router.patch(
@@ -1528,6 +1604,22 @@ def update_lksa_application_status(
                 f"{data.catatan_admin or ''}"
             ),
         )
+
+        # LKSA yang baru disetujui diumumkan ke publik (juga untuk
+        # pengunjung yang belum login). Keputusan final hanya bisa
+        # diambil sekali, jadi pengumuman ini tidak akan terduplikasi.
+        if data.status_pengajuan == "disetujui":
+            create_announcement(
+                db,
+                "Panti baru terverifikasi",
+                (
+                    f"{application.nama_panti} kini terdaftar resmi di "
+                    "HaloKids dan dapat menerima donasi serta relawan."
+                ),
+                "panti_baru",
+                panti_id=application.id_panti,
+                creator_id=current_user.id,
+            )
 
         db.commit()
         db.refresh(application)

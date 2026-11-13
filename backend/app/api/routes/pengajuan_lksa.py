@@ -24,6 +24,7 @@ from app.schemas.pengajuan_lksa import (
     DokumenPengajuanResponse,
 )
 
+from app.services.notification_service import notify_admins
 from app.services.lksa_storage import (
     ALLOWED_LKSA_DOCUMENT_TYPES,
     MAX_FILES_PER_MULTIPLE_TYPE,
@@ -655,9 +656,28 @@ def submit_application(
             },
         )
 
+    was_resubmission = application.status_pengajuan == "perlu_perbaikan"
+
     application.status_pengajuan = "diajukan"
     application.tanggal_diajukan = datetime.utcnow()
     application.catatan_admin = None
+
+    # Beritahu semua Super Admin (hanya mereka). Ikut satu transaksi
+    # dengan perubahan status, dan tidak terkirim ganda karena
+    # pengajuan yang sudah terkirim kembali lebih awal (idempoten).
+    notify_admins(
+        db,
+        "Pengajuan LKSA Baru",
+        (
+            f"{application.nama_panti} "
+            + (
+                "mengirim ulang pengajuan LKSA setelah perbaikan "
+                if was_resubmission
+                else "mengajukan pendaftaran LKSA "
+            )
+            + "dan menunggu verifikasi."
+        ),
+    )
 
     db.commit()
     db.refresh(application)

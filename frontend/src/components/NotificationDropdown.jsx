@@ -1,238 +1,598 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Bell,
+  Building2,
   CheckCheck,
-  Clock,
-  ExternalLink,
-  ShieldAlert,
+  ChevronRight,
   FileCheck2,
   HeartHandshake,
-  Users,
   Info,
-  ChevronRight,
-  Sparkles,
+  Inbox,
   LogIn,
-  Search,
-  CheckCircle2,
-  Trash2
+  Megaphone,
+  RefreshCw,
+  ShieldAlert,
+  Sparkles,
+  Users,
 } from 'lucide-react';
 
-// Mock Notifikasi untuk User Terotentikasi (Sudah Login)
-const MOCK_NOTIFICATIONS_USER = [
-  {
-    id: 'notif-usr-1',
-    category: 'pengaduan',
-    title: 'Update Pengaduan #TKT-8841',
-    summary: 'Petugas TRC Unit Cibinong telah menuju ke lokasi pengaduan untuk asesmen darurat lapangan.',
-    time: '10 menit lalu',
-    timestamp: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-    is_read: false,
-    badgeColor: 'bg-red-50 text-red-600 border-red-200',
-    icon: ShieldAlert,
-    iconColor: 'text-red-500 bg-red-50',
-    actionType: 'lacak',
-    targetTicket: 'TKT-8841',
-    actionTab: 'pengaduan'
-  },
-  {
-    id: 'notif-usr-2',
-    category: 'relawan',
-    title: 'Pendaftaran Relawan Disetujui!',
-    summary: 'Yayasan LKSA Kasih Bunda Mandiri menyetujui formulir relawan Anda (Bidang: Pendidikan & Tutor Belajar).',
-    time: '45 menit lalu',
-    timestamp: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-    is_read: false,
-    badgeColor: 'bg-indigo-50 text-indigo-600 border-indigo-200',
-    icon: Users,
-    iconColor: 'text-indigo-600 bg-indigo-50',
-    actionType: 'tab',
-    actionTab: 'volunteer'
-  },
-  {
-    id: 'notif-usr-3',
-    category: 'cota',
-    title: 'Verifikasi Berkas COTA Lengkap',
-    summary: 'Berkas permohonan pengangkatan anak Anda (COTA-2024-089) lolos verifikasi tahap 1 Dinsos. Jadwal Home Visit PIPA ditetapkan.',
-    time: '3 jam lalu',
-    timestamp: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
-    is_read: false,
-    badgeColor: 'bg-blue-50 text-blue-600 border-blue-200',
-    icon: FileCheck2,
-    iconColor: 'text-blue-600 bg-blue-50',
-    actionType: 'tab',
-    actionTab: 'adopsi'
-  },
-  {
-    id: 'notif-usr-4',
-    category: 'donasi',
-    title: 'Donasi Logistik Diterima Panti',
-    summary: 'Paket sembako & perlengkapan sekolah dari Anda telah diserahterimakan dan dicatat dalam audit resmi Dinsos.',
-    time: 'Kemarin',
-    timestamp: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
-    is_read: true,
-    badgeColor: 'bg-emerald-50 text-emerald-600 border-emerald-200',
-    icon: HeartHandshake,
-    iconColor: 'text-emerald-600 bg-emerald-50',
-    actionType: 'tab',
-    actionTab: 'donasi'
-  }
-];
+import notificationService from '../api/notificationService';
+import {
+  ANNOUNCEMENT_SEEN_KEY,
+  countUnread,
+  countUnseenAnnouncements,
+  formatRelativeTime,
+  inferCategory,
+  maxId,
+  resolveNotificationRole,
+  targetTabFor,
+} from '../utils/notificationHelpers';
 
-// Mock Notifikasi untuk Pengunjung Publik / Tamu (Belum Login)
-const MOCK_NOTIFICATIONS_GUEST = [
-  {
-    id: 'notif-gst-1',
-    category: 'tracking',
-    title: 'Lacak Cepat Pengaduan Publik',
-    summary: 'Sudah melapor kekerasan anak? Masukkan kode tiket pelaporan untuk memantau respons TRC < 2 jam.',
-    time: 'Aktif Sekarang',
-    timestamp: new Date().toISOString(),
-    is_read: false,
-    badgeColor: 'bg-blue-50 text-blue-600 border-blue-200',
-    icon: Search,
-    iconColor: 'text-blue-600 bg-blue-50',
-    actionType: 'lacak',
-    targetTicket: 'TKT-2024-LIVE'
-  },
-  {
-    id: 'notif-gst-2',
-    category: 'pengumuman',
-    title: 'Siaga Hotline TRC 24 Jam',
-    summary: 'Unit Reaksi Cepat Perlindungan Anak Dinsos siaga 24/7 bebas pulsa via Call Center 112 & WhatsApp TRC.',
-    time: '2 jam lalu',
-    timestamp: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
-    is_read: false,
-    badgeColor: 'bg-amber-50 text-amber-700 border-amber-200',
-    icon: Info,
-    iconColor: 'text-amber-600 bg-amber-50',
-    actionType: 'info'
-  },
-  {
-    id: 'notif-gst-3',
-    category: 'pengumuman',
-    title: 'Maklumat Layanan Ramah Anak Dinsos',
-    summary: 'Semua proses penerimaan pengaduan, verifikasi LKSA, dan pendaftaran relawan tidak dipungut biaya (gratis).',
-    time: '1 hari lalu',
-    timestamp: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
-    is_read: true,
-    badgeColor: 'bg-slate-100 text-slate-700 border-slate-200',
-    icon: Sparkles,
-    iconColor: 'text-slate-600 bg-slate-100',
-    actionType: 'info'
-  }
-];
+// Muat ulang otomatis tiap 60 detik selama tab browser terlihat.
+const POLL_INTERVAL_MS = 60 * 1000;
 
-export default function NotificationDropdown({
-  isLoggedIn = false,
-  currentUser = null,
-  onOpenLogin = () => {},
-  onOpenLacak = () => {},
-  onNavigateTab = () => {},
-  customNotifications = null
+const PERSONAL_UI = {
+  lksa: { icon: Building2, color: '#1d4ed8', bg: '#eff6ff', label: 'LKSA' },
+  adopsi: { icon: FileCheck2, color: '#2563eb', bg: '#eff6ff', label: 'Adopsi' },
+  relawan: { icon: Users, color: '#4f46e5', bg: '#eef2ff', label: 'Relawan' },
+  donasi: { icon: HeartHandshake, color: '#059669', bg: '#ecfdf5', label: 'Donasi' },
+  laporan: { icon: ShieldAlert, color: '#dc2626', bg: '#fef2f2', label: 'Laporan' },
+  umum: { icon: Info, color: '#475569', bg: '#f1f5f9', label: 'Info' },
+};
+
+const ANNOUNCEMENT_UI = {
+  panti_baru: { icon: Building2, color: '#047857', bg: '#ecfdf5', label: 'Panti baru' },
+  pembaruan: { icon: Sparkles, color: '#7c3aed', bg: '#f5f3ff', label: 'Pembaruan' },
+  pengumuman: { icon: Megaphone, color: '#b45309', bg: '#fffbeb', label: 'Pengumuman' },
+};
+
+function readSeenId() {
+  try {
+    return Number(localStorage.getItem(ANNOUNCEMENT_SEEN_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeSeenId(value) {
+  try {
+    localStorage.setItem(ANNOUNCEMENT_SEEN_KEY, String(value));
+  } catch {
+    // Penyimpanan browser dinonaktifkan: penanda hanya berlaku sesi ini.
+  }
+}
+
+/**
+ * Lonceng notifikasi.
+ *
+ * - Belum login : hanya Pengumuman publik (pembaruan web, panti baru).
+ * - Sudah login : tab "Untuk Saya" (notifikasi pribadi akun ini saja,
+ *                 disaring oleh backend) + tab "Pengumuman".
+ */
+export default function NotificationDropdown(props) {
+  const { isLoggedIn, currentUser } = props;
+
+  const role = isLoggedIn ? resolveNotificationRole(currentUser) : null;
+
+  // Identitas akun dipakai sebagai `key`. Saat login, logout, atau
+  // berganti akun tanpa memuat ulang halaman, komponen di bawah dibuat
+  // ulang dari nol sehingga notifikasi akun sebelumnya tidak mungkin
+  // tampil di akun berikutnya.
+  const identity = role
+    ? `${role}:${currentUser?.id ?? currentUser?.email ?? ''}`
+    : 'tamu';
+
+  return <NotificationBell key={identity} {...props} />;
+}
+
+function NotificationBell({
+  isLoggedIn,
+  currentUser,
+  onOpenLogin,
+  onNavigateTab,
 }) {
+  const role = isLoggedIn ? resolveNotificationRole(currentUser) : null;
+
   const [isOpen, setIsOpen] = useState(false);
-  const [notifications, setNotifications] = useState(() => {
-    if (customNotifications) return customNotifications;
-    return isLoggedIn ? MOCK_NOTIFICATIONS_USER : MOCK_NOTIFICATIONS_GUEST;
-  });
-  const [activeFilter, setActiveFilter] = useState('semua'); // 'semua' | 'unread'
+  const [activeTab, setActiveTab] = useState('umum');
+  const [activeFilter, setActiveFilter] = useState('semua');
+
+  const [personal, setPersonal] = useState([]);
+  const [personalError, setPersonalError] = useState(false);
+  const [personalLoaded, setPersonalLoaded] = useState(false);
+
+  const [announcements, setAnnouncements] = useState([]);
+  const [announcementError, setAnnouncementError] = useState(false);
+  const [announcementLoaded, setAnnouncementLoaded] = useState(false);
+
+  const [seenId, setSeenId] = useState(readSeenId);
+  const [baselineSeenId, setBaselineSeenId] = useState(readSeenId);
 
   const popoverRef = useRef(null);
-  const buttonRef = useRef(null);
+  const personalSeq = useRef(0);
+  const announcementSeq = useRef(0);
 
-  // Perbarui notifikasi bila status login berubah
+  // ------------------------------------------------------------
+  // Pengambilan data
+  // ------------------------------------------------------------
+
+  const loadPersonal = useCallback(async () => {
+    if (!role) return;
+
+    const seq = ++personalSeq.current;
+
+    try {
+      const data = await notificationService.listMine(role);
+      if (seq !== personalSeq.current) return;
+
+      setPersonal(Array.isArray(data) ? data : []);
+      setPersonalError(false);
+    } catch {
+      if (seq !== personalSeq.current) return;
+      // Data terakhir tetap ditampilkan; hanya tandai gagal memuat.
+      setPersonalError(true);
+    } finally {
+      if (seq === personalSeq.current) setPersonalLoaded(true);
+    }
+  }, [role]);
+
+  const loadAnnouncements = useCallback(async () => {
+    const seq = ++announcementSeq.current;
+
+    try {
+      const data = await notificationService.listAnnouncements();
+      if (seq !== announcementSeq.current) return;
+
+      setAnnouncements(Array.isArray(data) ? data : []);
+      setAnnouncementError(false);
+    } catch {
+      if (seq !== announcementSeq.current) return;
+      setAnnouncementError(true);
+    } finally {
+      if (seq === announcementSeq.current) setAnnouncementLoaded(true);
+    }
+  }, []);
+
+  // Muat pertama kali.
   useEffect(() => {
-    if (customNotifications) {
-      setNotifications(customNotifications);
-    } else {
-      setNotifications(isLoggedIn ? MOCK_NOTIFICATIONS_USER : MOCK_NOTIFICATIONS_GUEST);
-    }
-  }, [isLoggedIn, customNotifications]);
+    if (role) loadPersonal();
+    loadAnnouncements();
+  }, [role, loadPersonal, loadAnnouncements]);
 
-  // Handler Click Outside & Keyboard Escape
+  // Penyegaran berkala + saat tab browser kembali aktif.
   useEffect(() => {
-    function handleClickOutside(event) {
-      if (
-        popoverRef.current &&
-        !popoverRef.current.contains(event.target) &&
-        buttonRef.current &&
-        !buttonRef.current.contains(event.target)
-      ) {
-        setIsOpen(false);
-      }
-    }
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (role) loadPersonal();
+      loadAnnouncements();
+    };
 
-    function handleKeyDown(event) {
-      if (event.key === 'Escape') {
-        setIsOpen(false);
-      }
-    }
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      document.addEventListener('touchstart', handleClickOutside);
-      document.addEventListener('keydown', handleKeyDown);
-    }
+    const timer = setInterval(refresh, POLL_INTERVAL_MS);
+    document.addEventListener('visibilitychange', refresh);
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [role, loadPersonal, loadAnnouncements]);
+
+  // Tutup saat klik di luar atau menekan Escape.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const handlePointer = (event) => {
+      if (popoverRef.current && !popoverRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    const handleKey = (event) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
+
+    document.addEventListener('mousedown', handlePointer);
+    document.addEventListener('keydown', handleKey);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointer);
+      document.removeEventListener('keydown', handleKey);
     };
   }, [isOpen]);
 
-  const unreadCount = notifications.filter((n) => !n.is_read).length;
+  // Pengumuman dianggap sudah dilihat saat tab-nya terbuka.
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'umum') return;
+
+    const highest = maxId(announcements);
+    if (highest > seenId) {
+      setSeenId(highest);
+      writeSeenId(highest);
+    }
+  }, [isOpen, activeTab, announcements, seenId]);
+
+  // ------------------------------------------------------------
+  // Turunan
+  // ------------------------------------------------------------
+
+  const personalUnread = countUnread(personal);
+  const announcementUnseen = countUnseenAnnouncements(announcements, seenId);
+  const badgeCount = personalUnread + announcementUnseen;
+
+  const visiblePersonal = useMemo(
+    () =>
+      activeFilter === 'unread'
+        ? personal.filter((item) => !item.is_read)
+        : personal,
+    [personal, activeFilter]
+  );
+
+  // ------------------------------------------------------------
+  // Aksi
+  // ------------------------------------------------------------
 
   const handleToggle = () => {
-    setIsOpen((prev) => !prev);
+    if (isOpen) {
+      setIsOpen(false);
+      return;
+    }
+
+    setBaselineSeenId(seenId);
+    setActiveFilter('semua');
+
+    if (!role) {
+      setActiveTab('umum');
+    } else if (personalUnread > 0) {
+      setActiveTab('saya');
+    } else if (announcementUnseen > 0) {
+      setActiveTab('umum');
+    } else {
+      setActiveTab('saya');
+    }
+
+    setIsOpen(true);
+
+    if (role) loadPersonal();
+    loadAnnouncements();
   };
 
-  const handleMarkAllAsRead = (e) => {
-    e.stopPropagation();
-    setNotifications((prev) => prev.map((item) => ({ ...item, is_read: true })));
-  };
+  const handleMarkRead = async (item) => {
+    if (item.is_read) return;
 
-  const handleItemClick = (item) => {
-    // Otomatis tandai sebagai sudah dibaca
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === item.id ? { ...n, is_read: true } : n))
+    setPersonal((previous) =>
+      previous.map((row) =>
+        row.id === item.id ? { ...row, is_read: true } : row
+      )
     );
 
-    // Tindak lanjuti aksi
-    if (item.actionType === 'lacak') {
-      if (onOpenLacak) onOpenLacak(item.targetTicket);
-      setIsOpen(false);
-    } else if (item.actionType === 'tab' && item.actionTab) {
-      if (onNavigateTab) onNavigateTab(item.actionTab);
-      setIsOpen(false);
-    } else if (item.actionType === 'login') {
-      if (onOpenLogin) onOpenLogin();
+    try {
+      await notificationService.markRead(role, item.id);
+    } catch {
+      loadPersonal();
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    if (personalUnread === 0) return;
+
+    setPersonal((previous) =>
+      previous.map((row) => ({ ...row, is_read: true }))
+    );
+
+    try {
+      await notificationService.markAllRead(role);
+    } catch {
+      loadPersonal();
+    }
+  };
+
+  const handlePersonalClick = (item) => {
+    handleMarkRead(item);
+
+    const target = targetTabFor(role, inferCategory(item.judul));
+
+    if (target && onNavigateTab) {
+      onNavigateTab(target);
       setIsOpen(false);
     }
   };
 
-  const filteredNotifications =
-    activeFilter === 'unread'
-      ? notifications.filter((n) => !n.is_read)
-      : notifications;
+  const handleAnnouncementClick = (item) => {
+    // Hanya pengunjung dan warga yang diarahkan ke daftar panti.
+    if (
+      item.kategori === 'panti_baru' &&
+      (!role || role === 'masyarakat') &&
+      onNavigateTab
+    ) {
+      onNavigateTab('panti');
+      setIsOpen(false);
+    }
+  };
+
+  const handleLoginClick = () => {
+    setIsOpen(false);
+    if (onOpenLogin) onOpenLogin();
+  };
+
+  // ------------------------------------------------------------
+  // Tampilan
+  // ------------------------------------------------------------
+
+  const tabButtonStyle = (selected) => ({
+    flex: 1,
+    padding: '0.55rem 0.5rem',
+    fontSize: '0.78rem',
+    fontWeight: 700,
+    cursor: 'pointer',
+    border: 'none',
+    background: 'transparent',
+    color: selected ? '#1d4ed8' : '#64748b',
+    borderBottom: selected ? '2px solid #1d4ed8' : '2px solid transparent',
+  });
+
+  const chipStyle = (selected) => ({
+    padding: '0.2rem 0.65rem',
+    fontSize: '0.72rem',
+    fontWeight: 600,
+    borderRadius: '9999px',
+    cursor: 'pointer',
+    border: '1px solid ' + (selected ? '#bfdbfe' : '#e2e8f0'),
+    background: selected ? '#eff6ff' : '#ffffff',
+    color: selected ? '#1d4ed8' : '#64748b',
+  });
+
+  const renderEmpty = (text) => (
+    <div
+      style={{
+        padding: '2rem 1rem',
+        textAlign: 'center',
+        color: '#94a3b8',
+        fontSize: '0.82rem',
+      }}
+    >
+      <Inbox size={28} color="#cbd5e1" style={{ marginBottom: '0.4rem' }} />
+      <div>{text}</div>
+    </div>
+  );
+
+  const renderError = (retry) => (
+    <div
+      style={{
+        margin: '0.75rem',
+        padding: '0.6rem 0.75rem',
+        borderRadius: '10px',
+        background: '#fef2f2',
+        color: '#b91c1c',
+        fontSize: '0.78rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '0.5rem',
+      }}
+    >
+      <span>Gagal memuat notifikasi.</span>
+      <button
+        type="button"
+        onClick={retry}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.25rem',
+          border: 'none',
+          background: 'transparent',
+          color: '#b91c1c',
+          fontWeight: 700,
+          cursor: 'pointer',
+          fontSize: '0.78rem',
+        }}
+      >
+        <RefreshCw size={12} /> Coba lagi
+      </button>
+    </div>
+  );
+
+  const renderItem = ({ key, ui, title, text, time, unread, isNew, clickable, onClick }) => {
+    const Icon = ui.icon;
+
+    return (
+      <button
+        key={key}
+        type="button"
+        onClick={onClick}
+        style={{
+          width: '100%',
+          textAlign: 'left',
+          display: 'flex',
+          gap: '0.65rem',
+          padding: '0.75rem 1rem',
+          border: 'none',
+          borderBottom: '1px solid #f1f5f9',
+          background: unread || isNew ? '#f8fbff' : '#ffffff',
+          cursor: clickable ? 'pointer' : 'default',
+        }}
+      >
+        <span
+          style={{
+            flexShrink: 0,
+            width: '34px',
+            height: '34px',
+            borderRadius: '10px',
+            background: ui.bg,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Icon size={16} color={ui.color} />
+        </span>
+
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              marginBottom: '0.15rem',
+            }}
+          >
+            <span
+              style={{
+                fontSize: '0.64rem',
+                fontWeight: 800,
+                color: ui.color,
+                textTransform: 'uppercase',
+                letterSpacing: '0.03em',
+              }}
+            >
+              {ui.label}
+            </span>
+            {(unread || isNew) && (
+              <span
+                aria-label={unread ? 'Belum dibaca' : 'Baru'}
+                style={{
+                  width: '7px',
+                  height: '7px',
+                  borderRadius: '50%',
+                  background: '#2563eb',
+                }}
+              />
+            )}
+            <span
+              style={{
+                marginLeft: 'auto',
+                fontSize: '0.68rem',
+                color: '#94a3b8',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {time}
+            </span>
+          </span>
+
+          <span
+            style={{
+              display: 'block',
+              fontSize: '0.84rem',
+              fontWeight: unread || isNew ? 700 : 600,
+              color: '#0f172a',
+            }}
+          >
+            {title}
+          </span>
+          <span
+            style={{
+              display: 'block',
+              marginTop: '0.1rem',
+              fontSize: '0.78rem',
+              color: '#475569',
+              lineHeight: 1.4,
+              wordBreak: 'break-word',
+            }}
+          >
+            {text}
+          </span>
+        </span>
+
+        {clickable && (
+          <ChevronRight
+            size={14}
+            color="#cbd5e1"
+            style={{ flexShrink: 0, alignSelf: 'center' }}
+          />
+        )}
+      </button>
+    );
+  };
+
+  const renderPersonalList = () => {
+    if (!personalLoaded && personal.length === 0 && !personalError) {
+      return renderEmpty('Memuat notifikasi...');
+    }
+
+    return (
+      <>
+        {personalError && renderError(loadPersonal)}
+
+        {visiblePersonal.length === 0
+          ? !personalError &&
+            renderEmpty(
+              activeFilter === 'unread'
+                ? 'Tidak ada notifikasi yang belum dibaca.'
+                : 'Belum ada notifikasi untuk akun Anda.'
+            )
+          : visiblePersonal.map((item) => {
+              const category = inferCategory(item.judul);
+              const clickable = Boolean(targetTabFor(role, category));
+
+              return renderItem({
+                key: `personal-${item.id}`,
+                ui: PERSONAL_UI[category] || PERSONAL_UI.umum,
+                title: item.judul,
+                text: item.pesan,
+                time: formatRelativeTime(item.tanggal_buat),
+                unread: !item.is_read,
+                clickable,
+                onClick: () => handlePersonalClick(item),
+              });
+            })}
+      </>
+    );
+  };
+
+  const renderAnnouncementList = () => {
+    if (!announcementLoaded && announcements.length === 0 && !announcementError) {
+      return renderEmpty('Memuat pengumuman...');
+    }
+
+    return (
+      <>
+        {announcementError && renderError(loadAnnouncements)}
+
+        {announcements.length === 0
+          ? !announcementError && renderEmpty('Belum ada pengumuman.')
+          : announcements.map((item) => {
+              const clickable =
+                item.kategori === 'panti_baru' &&
+                (!role || role === 'masyarakat') &&
+                Boolean(onNavigateTab);
+
+              return renderItem({
+                key: `announcement-${item.id}`,
+                ui: ANNOUNCEMENT_UI[item.kategori] || ANNOUNCEMENT_UI.pengumuman,
+                title: item.judul,
+                text: item.pesan,
+                time: formatRelativeTime(item.tanggal_buat),
+                unread: false,
+                isNew: Number(item.id) > baselineSeenId,
+                clickable,
+                onClick: () => handleAnnouncementClick(item),
+              });
+            })}
+      </>
+    );
+  };
+
+  const showingPersonal = Boolean(role) && activeTab === 'saya';
 
   return (
-    <div className="relative inline-block text-left" ref={popoverRef} style={{ position: 'relative' }}>
-      {/* Tombol Lonceng Notifikasi */}
+    <div ref={popoverRef} style={{ position: 'relative', display: 'inline-block' }}>
       <button
-        ref={buttonRef}
         type="button"
         id="btn-halo-notifications"
         onClick={handleToggle}
         aria-label="Lihat Notifikasi"
         aria-expanded={isOpen}
-        title={unreadCount > 0 ? `${unreadCount} notifikasi belum dibaca` : 'Notifikasi'}
-        className={`relative flex items-center justify-center p-2 rounded-full transition-all duration-200 outline-none focus:ring-2 focus:ring-blue-400 ${
-          isOpen
-            ? 'bg-blue-100 text-blue-700 shadow-sm'
-            : 'bg-white hover:bg-slate-100 text-slate-700 hover:text-blue-700 border border-slate-200 shadow-sm'
-        }`}
+        title={
+          badgeCount > 0
+            ? `${badgeCount} notifikasi baru`
+            : 'Notifikasi'
+        }
         style={{
+          position: 'relative',
           width: '38px',
           height: '38px',
           borderRadius: '50%',
@@ -242,19 +602,13 @@ export default function NotificationDropdown({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+          boxShadow: '0 1px 2px rgba(15, 23, 42, 0.08)',
         }}
       >
-        <Bell
-          size={18}
-          className={`transition-transform duration-200 ${isOpen ? 'scale-110 text-blue-700' : 'text-slate-700'}`}
-          color={isOpen ? '#1d4ed8' : '#334155'}
-        />
+        <Bell size={18} color={isOpen ? '#1d4ed8' : '#334155'} />
 
-        {/* Badge Counter Merah (Jika unreadCount > 0) */}
-        {unreadCount > 0 && (
+        {badgeCount > 0 && (
           <span
-            className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-extrabold text-white bg-red-600 rounded-full border-2 border-white shadow-sm animate-pulse"
             style={{
               position: 'absolute',
               top: '-3px',
@@ -271,19 +625,16 @@ export default function NotificationDropdown({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 2px 4px rgba(220, 38, 38, 0.4)'
             }}
           >
-            {unreadCount > 9 ? '9+' : unreadCount}
+            {badgeCount > 9 ? '9+' : badgeCount}
           </span>
         )}
       </button>
 
-      {/* Dropdown / Popover Container */}
       {isOpen && (
         <div
           id="popover-halo-notifications"
-          className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150"
           style={{
             position: 'absolute',
             top: 'calc(100% + 8px)',
@@ -293,364 +644,138 @@ export default function NotificationDropdown({
             background: '#ffffff',
             borderRadius: '16px',
             border: '1px solid #e2e8f0',
-            boxShadow: '0 20px 35px -8px rgba(15, 23, 42, 0.2), 0 0 1px rgba(15, 23, 42, 0.1)',
+            boxShadow:
+              '0 20px 35px -8px rgba(15, 23, 42, 0.2), 0 0 1px rgba(15, 23, 42, 0.1)',
             zIndex: 9999,
-            overflow: 'hidden'
+            overflow: 'hidden',
+            textAlign: 'left',
           }}
         >
-          {/* Header Popover */}
+          {/* Judul */}
           <div
-            className="px-4 py-3 bg-gradient-to-r from-slate-50 to-blue-50/40 border-b border-slate-100 flex items-center justify-between"
             style={{
-              padding: '0.85rem 1rem',
+              padding: '0.8rem 1rem',
               background: '#f8fafc',
               borderBottom: '1px solid #f1f5f9',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'between'
+              justifyContent: 'space-between',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <div
-                style={{
-                  width: '26px',
-                  height: '26px',
-                  borderRadius: '50%',
-                  background: '#eff6ff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <Bell size={14} color="#1d4ed8" />
-              </div>
-              <h4
-                style={{
-                  margin: 0,
-                  fontSize: '0.9rem',
-                  fontWeight: 800,
-                  color: '#0b1f5c',
-                  letterSpacing: '-0.01em'
-                }}
-              >
-                Notifikasi
-              </h4>
-              {unreadCount > 0 && (
-                <span
-                  style={{
-                    fontSize: '0.675rem',
-                    fontWeight: 700,
-                    background: '#fee2e2',
-                    color: '#dc2626',
-                    padding: '0.1rem 0.45rem',
-                    borderRadius: '50px'
-                  }}
-                >
-                  {unreadCount} Baru
-                </span>
-              )}
-            </div>
+            <h4
+              style={{
+                margin: 0,
+                fontSize: '0.9rem',
+                fontWeight: 800,
+                color: '#0f172a',
+              }}
+            >
+              Notifikasi
+            </h4>
 
-            {/* Tombol Aksi: Tandai Sudah Dibaca */}
-            {unreadCount > 0 && (
+            {showingPersonal && personalUnread > 0 && (
               <button
                 type="button"
-                onClick={handleMarkAllAsRead}
-                className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors"
-                title="Tandai semua pesan sebagai sudah dibaca"
+                onClick={handleMarkAllRead}
                 style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#1d4ed8',
-                  fontSize: '0.725rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
+                  display: 'inline-flex',
                   alignItems: 'center',
                   gap: '0.25rem',
-                  padding: '0.25rem 0.5rem',
-                  borderRadius: '6px'
-                }}
-              >
-                <CheckCheck size={14} />
-                <span>Tandai dibaca</span>
-              </button>
-            )}
-          </div>
-
-          {/* Subheader / Tabs Filter Cepat */}
-          <div
-            style={{
-              padding: '0.4rem 1rem',
-              background: '#ffffff',
-              borderBottom: '1px solid #f1f5f9',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem'
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setActiveFilter('semua')}
-              style={{
-                background: activeFilter === 'semua' ? '#eff6ff' : 'transparent',
-                color: activeFilter === 'semua' ? '#1d4ed8' : '#64748b',
-                border: 'none',
-                borderRadius: '50px',
-                padding: '0.2rem 0.65rem',
-                fontSize: '0.7rem',
-                fontWeight: 700,
-                cursor: 'pointer'
-              }}
-            >
-              Semua ({notifications.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveFilter('unread')}
-              style={{
-                background: activeFilter === 'unread' ? '#eff6ff' : 'transparent',
-                color: activeFilter === 'unread' ? '#1d4ed8' : '#64748b',
-                border: 'none',
-                borderRadius: '50px',
-                padding: '0.2rem 0.65rem',
-                fontSize: '0.7rem',
-                fontWeight: 700,
-                cursor: 'pointer'
-              }}
-            >
-              Belum Dibaca ({unreadCount})
-            </button>
-          </div>
-
-          {/* List Notifikasi */}
-          <div
-            className="max-h-80 overflow-y-auto divide-y divide-slate-100"
-            style={{
-              maxHeight: '340px',
-              overflowY: 'auto'
-            }}
-          >
-            {filteredNotifications.length === 0 ? (
-              <div
-                style={{
-                  padding: '2.5rem 1rem',
-                  textAlign: 'center',
-                  color: '#94a3b8'
-                }}
-              >
-                <CheckCircle2 size={32} style={{ margin: '0 auto 0.5rem auto', color: '#cbd5e1' }} />
-                <p style={{ margin: 0, fontSize: '0.8rem', fontWeight: 600, color: '#64748b' }}>
-                  Tidak ada notifikasi saat ini
-                </p>
-                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.725rem', color: '#94a3b8' }}>
-                  Semua pembaruan sistem dan laporan Anda akan muncul di sini.
-                </p>
-              </div>
-            ) : (
-              filteredNotifications.map((item) => {
-                const IconComponent = item.icon || Info;
-                return (
-                  <div
-                    key={item.id}
-                    onClick={() => handleItemClick(item)}
-                    className="p-3 sm:p-3.5 hover:bg-slate-50 transition-colors cursor-pointer group flex items-start gap-3 relative"
-                    style={{
-                      padding: '0.75rem 1rem',
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: '0.75rem',
-                      cursor: 'pointer',
-                      borderBottom: '1px solid #f8fafc',
-                      background: item.is_read ? '#ffffff' : '#f8faff',
-                      transition: 'background-color 0.15s ease'
-                    }}
-                  >
-                    {/* Visual Unread Indicator (Dot Biru) */}
-                    {!item.is_read && (
-                      <span
-                        className="absolute left-1.5 top-5 w-1.5 h-1.5 bg-blue-600 rounded-full"
-                        style={{
-                          position: 'absolute',
-                          left: '6px',
-                          top: '18px',
-                          width: '6px',
-                          height: '6px',
-                          backgroundColor: '#2563eb',
-                          borderRadius: '50%'
-                        }}
-                      />
-                    )}
-
-                    {/* Ikon Kategori */}
-                    <div
-                      className={`flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center mt-0.5 ${item.iconColor || 'bg-blue-50 text-blue-600'}`}
-                      style={{
-                        width: '32px',
-                        height: '32px',
-                        borderRadius: '10px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0
-                      }}
-                    >
-                      <IconComponent size={16} />
-                    </div>
-
-                    {/* Konten Notifikasi */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.2rem' }}>
-                        <h5
-                          style={{
-                            margin: 0,
-                            fontSize: '0.8rem',
-                            fontWeight: item.is_read ? 600 : 700,
-                            color: item.is_read ? '#334155' : '#0b1f5c',
-                            lineHeight: 1.3
-                          }}
-                        >
-                          {item.title}
-                        </h5>
-                        <span
-                          style={{
-                            fontSize: '0.675rem',
-                            color: '#94a3b8',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.2rem',
-                            whiteSpace: 'nowrap',
-                            flexShrink: 0
-                          }}
-                        >
-                          <Clock size={10} />
-                          {item.time}
-                        </span>
-                      </div>
-
-                      <p
-                        style={{
-                          margin: 0,
-                          fontSize: '0.735rem',
-                          color: '#64748b',
-                          lineHeight: 1.45
-                        }}
-                      >
-                        {item.summary}
-                      </p>
-
-                      {/* Action Pill Hint */}
-                      {item.actionType === 'lacak' && (
-                        <div
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.25rem',
-                            marginTop: '0.35rem',
-                            fontSize: '0.675rem',
-                            fontWeight: 700,
-                            color: '#0284c7'
-                          }}
-                        >
-                          <span>Lacak status tiket sekarang</span>
-                          <ChevronRight size={12} />
-                        </div>
-                      )}
-
-                      {item.actionType === 'tab' && (
-                        <div
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.25rem',
-                            marginTop: '0.35rem',
-                            fontSize: '0.675rem',
-                            fontWeight: 700,
-                            color: '#1d4ed8'
-                          }}
-                        >
-                          <span>Buka halaman {item.actionTab}</span>
-                          <ExternalLink size={11} />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          {/* Footer Popover: Kondisional Berdasarkan Status Autentikasi */}
-          {!isLoggedIn ? (
-            /* Banner CTA untuk Pengunjung Publik (Guest) */
-            <div
-              className="p-3 bg-blue-50 border-t border-blue-100 flex items-center justify-between gap-2"
-              style={{
-                padding: '0.75rem 1rem',
-                background: '#eff6ff',
-                borderTop: '1px solid #dbeafe',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '0.75rem'
-              }}
-            >
-              <div style={{ minWidth: 0 }}>
-                <p style={{ margin: 0, fontSize: '0.725rem', fontWeight: 700, color: '#1e40af' }}>
-                  Login untuk Riwayat Lengkap
-                </p>
-                <p style={{ margin: '0.1rem 0 0 0', fontSize: '0.675rem', color: '#3b82f6' }}>
-                  Akses berkas pengaduan, verifikasi COTA & relawan.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsOpen(false);
-                  onOpenLogin();
-                }}
-                className="btn btn-sm btn-primary whitespace-nowrap"
-                style={{
-                  background: '#0b1f5c',
-                  color: '#ffffff',
                   border: 'none',
-                  padding: '0.35rem 0.75rem',
-                  borderRadius: '50px',
-                  fontSize: '0.725rem',
+                  background: 'transparent',
+                  color: '#1d4ed8',
+                  fontSize: '0.74rem',
                   fontWeight: 700,
                   cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.3rem',
-                  whiteSpace: 'nowrap',
-                  flexShrink: 0
                 }}
               >
-                <LogIn size={12} />
-                <span>Login User</span>
+                <CheckCheck size={14} /> Tandai semua dibaca
+              </button>
+            )}
+          </div>
+
+          {/* Tab: hanya untuk pengguna yang sudah login */}
+          {role && (
+            <div style={{ display: 'flex', borderBottom: '1px solid #f1f5f9' }}>
+              <button
+                type="button"
+                onClick={() => setActiveTab('saya')}
+                style={tabButtonStyle(activeTab === 'saya')}
+              >
+                Untuk Saya{personalUnread > 0 ? ` (${personalUnread})` : ''}
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('umum')}
+                style={tabButtonStyle(activeTab === 'umum')}
+              >
+                Pengumuman
+                {announcementUnseen > 0 ? ` (${announcementUnseen})` : ''}
               </button>
             </div>
-          ) : (
-            /* Footer untuk User Login */
+          )}
+
+          {showingPersonal && (
             <div
               style={{
-                padding: '0.65rem 1rem',
-                background: '#f8fafc',
-                borderTop: '1px solid #f1f5f9',
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                fontSize: '0.7rem',
-                color: '#64748b'
+                gap: '0.4rem',
+                padding: '0.55rem 1rem',
+                borderBottom: '1px solid #f1f5f9',
               }}
             >
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                <Sparkles size={12} color="#0284c7" />
-                Layanan Terpadu HaloKids Dinsos
-              </span>
-              <span style={{ fontWeight: 600, color: '#0b1f5c' }}>
-                {currentUser?.name || 'Warga'}
-              </span>
+              <button
+                type="button"
+                onClick={() => setActiveFilter('semua')}
+                style={chipStyle(activeFilter === 'semua')}
+              >
+                Semua
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveFilter('unread')}
+                style={chipStyle(activeFilter === 'unread')}
+              >
+                Belum dibaca
+              </button>
+            </div>
+          )}
+
+          {/* Daftar */}
+          <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
+            {showingPersonal ? renderPersonalList() : renderAnnouncementList()}
+          </div>
+
+          {/* Ajakan login untuk pengunjung */}
+          {!role && (
+            <div
+              style={{
+                padding: '0.75rem 1rem',
+                background: '#f8fafc',
+                borderTop: '1px solid #f1f5f9',
+              }}
+            >
+              <button
+                type="button"
+                onClick={handleLoginClick}
+                style={{
+                  width: '100%',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.4rem',
+                  padding: '0.55rem',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: '#1d4ed8',
+                  color: '#ffffff',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                <LogIn size={14} /> Masuk untuk melihat notifikasi akun Anda
+              </button>
             </div>
           )}
         </div>

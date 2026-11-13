@@ -10,6 +10,7 @@ from app.db.models.gallery import GaleriPanti
 from app.db.models.notification import Notifikasi
 from app.db.models.report_audit import AuditLogPengaduan
 from app.db.models.refresh_token import AuthRefreshToken
+from app.db.models.announcement import Pengumuman
 
 __all__ = [
     "User",
@@ -22,7 +23,8 @@ __all__ = [
     "Relawan",
     "GaleriPanti",
     "Notifikasi",
-    "AuthRefreshToken"
+    "AuthRefreshToken",
+    "Pengumuman",
     "LaporanPengaduan",
     "Donasi",
     "WishlistPanti",

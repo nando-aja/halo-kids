@@ -1,7 +1,7 @@
 from uuid import uuid4
 from datetime import date
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -9,11 +9,13 @@ from app.db.models.pengajuan_lksa import PengajuanLKSA
 
 from app.db.models.report_audit import AuditLogPengaduan
 from app.api.deps import get_db, get_optional_current_user
+from app.db.models.announcement import Pengumuman
 from app.db.models.dana import LaporanDana
 from app.db.models.gallery import GaleriPanti
 from app.db.models.panti import PantiAsuhan
 from app.db.models.user import User
 from app.db.models.wishlist import WishlistPanti
+from app.schemas.announcement import AnnouncementResponse
 from app.schemas.calendar import VisitEventResponse
 from app.schemas.dana import DanaResponse
 from app.schemas.gallery import GalleryResponse
@@ -33,6 +35,27 @@ from app.services.report_attachments import (
 )
 
 router = APIRouter()
+
+
+@router.get(
+    "/pengumuman",
+    response_model=list[AnnouncementResponse],
+)
+def list_public_announcements(
+    limit: int = Query(20, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
+    """
+    Pengumuman publik (pembaruan web, panti baru, informasi umum).
+    Terbuka tanpa login dan tidak berisi data pribadi siapa pun.
+    """
+    return (
+        db.query(Pengumuman)
+        .filter(Pengumuman.aktif.is_(True))
+        .order_by(Pengumuman.id.desc())
+        .limit(limit)
+        .all()
+    )
 
 
 

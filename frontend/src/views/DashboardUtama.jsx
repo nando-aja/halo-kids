@@ -32,10 +32,13 @@ import {
   User,
   FileText,
   RefreshCw,
-  Gift
+  Gift,
+  Megaphone
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { AdminDocumentReview, DonationProofReview } from '../components/AiVerification';
+import NotificationDropdown from '../components/NotificationDropdown';
+import PengumumanAdminPanel from '../components/Pengumuman/PengumumanAdminPanel';
 import FormPengajuanLKSA from '../components/LKSA/FormPengajuanLKSA';
 import StatusPengajuanLKSA from '../components/LKSA/StatusPengajuanLKSA';
 import PanelVerifikasiLKSA from '../components/LKSA/PanelVerifikasiLKSA';
@@ -89,7 +92,7 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
   const [userTab, setUserTab] = useState('adopsi'); // 'adopsi' | 'pengaduan' | 'donasi' | 'panti'
 
   // Active Menu Tab for Super Admin
-  const [superAdminTab, setSuperAdminTab] = useState('approval_panti'); // 'approval_panti' | 'supervisi_adopsi' | 'monitoring_hilang' | 'audit_donasi' | 'analitik_eksekutif'
+  const [superAdminTab, setSuperAdminTab] = useState('approval_panti'); // 'approval_panti' | 'supervisi_adopsi' | 'monitoring_hilang' | 'audit_donasi' | 'analitik_eksekutif' | 'pengumuman'
 
   // Active Menu Tab for Admin Panti
 const [pantiAdminTab, setPantiAdminTab] = useState(() => {
@@ -103,6 +106,13 @@ const [pantiAdminTab, setPantiAdminTab] = useState(() => {
 
   return 'daftar_anak';
 });
+
+  // Klik notifikasi di lonceng membuka halaman terkait sesuai peran.
+  const handleNotificationNavigate = (tab) => {
+    if (dashboardRoleMode === 'superadmin') setSuperAdminTab(tab);
+    else if (dashboardRoleMode === 'pantiadmin') setPantiAdminTab(tab);
+    else setUserTab(tab);
+  };
 
   // AI Verification Review Modal (PRD Single-Agent AI)
   const [showAiAdminReviewModal, setShowAiAdminReviewModal] = useState(false);
@@ -1176,6 +1186,13 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
 
         {/* Role ditampilkan sebagai label, bukan tombol pengganti role */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          {/* Lonceng notifikasi akun ini (Super Admin / Admin LKSA) */}
+          <NotificationDropdown
+            isLoggedIn={Boolean(currentUser)}
+            currentUser={currentUser}
+            onNavigateTab={handleNotificationNavigate}
+          />
+
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -1305,7 +1322,8 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
                   { id: 'approval_panti', label: '1. Approval & Status LKSA', icon: Building2, count: null },
                   { id: 'monitoring_hilang', label: '3. Pengaduan & Kedaruratan', icon: ShieldAlert, count: complaintReports.filter(r => !r.status.includes('Selesai')).length },
                   { id: 'audit_donasi', label: '4. Audit & Map Donasi', icon: Wallet, count: null },
-                  { id: 'analitik_eksekutif', label: '5. Dashboard Analitis', icon: TrendingUp, count: null }
+                  { id: 'analitik_eksekutif', label: '5. Dashboard Analitis', icon: TrendingUp, count: null },
+                  { id: 'pengumuman', label: '6. Pengumuman Publik', icon: Megaphone, count: null }
                 ].map((menu) => (
                   <button
                     key={menu.id}
@@ -2618,6 +2636,11 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
                     </table>
                   </div>
                 </div>
+              )}
+
+              {/* MODULE 6: PENGUMUMAN PUBLIK (tampil di lonceng semua pengunjung) */}
+              {superAdminTab === 'pengumuman' && (
+                <PengumumanAdminPanel />
               )}
 
               {/* MODULE 5: DASHBOARD ANALITIS & LAPORAN EKSEKUTIF */}

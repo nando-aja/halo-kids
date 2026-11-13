@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_masyarakat
@@ -32,6 +32,7 @@ from app.services.ai_service import analyze_transfer_proof as run_transfer_proof
 from app.services.notification_service import (
     create_notification,
     mark_all_notifications_read,
+    notify_admins,
 )
 from app.services.storage import stored_file_exists
 
@@ -186,6 +187,16 @@ def create_pengajuan_adopsi(
         current_user.id,
         "Pengajuan Adopsi",
         notification_message,
+    )
+
+    # Admin Dinsos yang memverifikasi juga perlu tahu ada pengajuan baru.
+    notify_admins(
+        db,
+        "Pengajuan Adopsi Baru",
+        (
+            f"Pengajuan adopsi #{item.id} dari {data.nama_pemohon} "
+            "masuk dan menunggu verifikasi."
+        ),
     )
 
     db.commit()
@@ -746,6 +757,18 @@ def apply_volunteer(
         tujuan_kerelawanan=data.tujuan_kerelawanan,
     )
     db.add(item)
+    db.flush()
+
+    # Pengelola LKSA tujuan (dan hanya dia) yang memverifikasi relawan.
+    if panti.id_admin_pengelola:
+        create_notification(
+            db,
+            panti.id_admin_pengelola,
+            "Pendaftaran Relawan Baru",
+            f"{data.nama or 'Seorang warga'} mendaftar sebagai relawan "
+            f"di {panti.nama_panti} dan menunggu verifikasi.",
+        )
+
     db.commit()
     db.refresh(item)
     return item
@@ -767,6 +790,7 @@ def get_my_volunteer_registrations(
     response_model=list[NotificationResponse],
 )
 def get_my_notifications(
+    limit: int = Query(50, ge=1, le=200),
     current_user: User = Depends(require_masyarakat),
     db: Session = Depends(get_db),
 ):
@@ -774,6 +798,7 @@ def get_my_notifications(
         db.query(Notifikasi)
         .filter(Notifikasi.id_user == current_user.id)
         .order_by(Notifikasi.id.desc())
+        .limit(limit)
         .all()
     )
 
