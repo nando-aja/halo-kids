@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   ShieldCheck, Lock, Award, HeartHandshake, ArrowRight, UserCheck, Megaphone,
   Building2, PhoneCall, FileCheck2, EyeOff, LogIn, ClipboardList, BadgeCheck, UserPlus
@@ -16,6 +16,8 @@ export default function HeroSection({
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const touchStartX = useRef(null);
+  const elapsedRef = useRef(0);
+  const tabsRef = useRef(null);
 
   const slides = [
     {
@@ -115,10 +117,39 @@ export default function HeroSection({
   ];
 
   const goTo = useCallback((i) => {
+    elapsedRef.current = 0;
     setIndex((i + slides.length) % slides.length);
   }, [slides.length]);
 
-  const next = useCallback(() => setIndex((i) => (i + 1) % slides.length), [slides.length]);
+  // Autoplay berbasis timer JS (tidak bergantung pada animasi CSS / pengaturan reduce-motion OS).
+  // Progres disimpan di elapsedRef sehingga melanjutkan dari titik terakhir setelah jeda.
+  useEffect(() => {
+    const fill = tabsRef.current?.querySelector('.hero-tab-fill');
+    if (fill) fill.style.transform = `scaleX(${Math.min(elapsedRef.current / SLIDE_INTERVAL_MS, 1)})`;
+    if (paused) return undefined;
+
+    let raf;
+    let last = performance.now();
+    const tick = (now) => {
+      if (document.hidden) {
+        last = now;
+      } else {
+        elapsedRef.current += now - last;
+        last = now;
+        const p = Math.min(elapsedRef.current / SLIDE_INTERVAL_MS, 1);
+        const el = tabsRef.current?.querySelector('.hero-tab-fill');
+        if (el) el.style.transform = `scaleX(${p})`;
+        if (p >= 1) {
+          elapsedRef.current = 0;
+          setIndex((i) => (i + 1) % slides.length);
+          return;
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [index, paused, slides.length]);
 
   const handleTabKey = (e) => {
     if (e.key === 'ArrowRight') { e.preventDefault(); goTo(index + 1); }
@@ -144,9 +175,9 @@ export default function HeroSection({
       id="hero"
       aria-roledescription="carousel"
       aria-label="Layanan utama HaloKids"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
+      onPointerEnter={(e) => { if (e.pointerType === 'mouse') setPaused(true); }}
+      onPointerLeave={(e) => { if (e.pointerType === 'mouse') setPaused(false); }}
+      onFocus={(e) => { if (e.target.matches?.(':focus-visible')) setPaused(true); }}
       onBlur={() => setPaused(false)}
       style={{
         background: 'var(--bg-gradient-hero)',
@@ -333,7 +364,7 @@ export default function HeroSection({
         </div>
 
         {/* Navigasi slide: tab bertanda progres, otomatis pindah tiap beberapa detik */}
-        <div className="hero-tabs" role="tablist" aria-label="Pilih slide">
+        <div className="hero-tabs" role="tablist" aria-label="Pilih slide" ref={tabsRef}>
           {slides.map((s, i) => {
             const active = i === index;
             return (
@@ -351,15 +382,7 @@ export default function HeroSection({
                 <span className="hero-tab-label">{s.tab}</span>
                 <span className="hero-tab-track">
                   {active && (
-                    <span
-                      key={`${index}`}
-                      className="hero-tab-fill"
-                      style={{
-                        animationDuration: `${SLIDE_INTERVAL_MS}ms`,
-                        animationPlayState: paused ? 'paused' : 'running'
-                      }}
-                      onAnimationEnd={next}
-                    />
+                    <span key={index} className="hero-tab-fill" />
                   )}
                 </span>
               </button>
@@ -505,11 +528,8 @@ export default function HeroSection({
           display: block; height: 100%; width: 100%;
           background: #1d4ed8;
           transform-origin: left center;
-          animation-name: heroProgress;
-          animation-timing-function: linear;
-          animation-fill-mode: forwards;
+          transform: scaleX(0);
         }
-        @keyframes heroProgress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 
         @media (max-width: 900px) {
           .hero-grid { grid-template-columns: 1fr; gap: 1.75rem; }
@@ -520,7 +540,6 @@ export default function HeroSection({
         }
         @media (prefers-reduced-motion: reduce) {
           .hero-slide, .hero-slide.is-active { transition: none; }
-          .hero-tab-fill { animation: none; transform: scaleX(1); }
           .hero-cta:hover { transform: none; }
         }
       `}</style>
