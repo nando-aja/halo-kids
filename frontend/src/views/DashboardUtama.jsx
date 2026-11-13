@@ -248,6 +248,8 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
   ];
 
   const [localVolunteers, setLocalVolunteers] = useState(defaultVolunteers);
+  // Harus dideklarasikan sebelum currentVolunteers (hindari TDZ error).
+  const [pantiVolunteers, setPantiVolunteers] = useState([]);
   // Pengelola panti hanya melihat relawan yang mendaftar ke panti-nya sendiri.
   const currentVolunteers = dashboardRoleMode === 'pantiadmin'
     ? pantiVolunteers
@@ -348,7 +350,6 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
   // Data anak asuh diambil dari backend per panti (multi-tenant);
   // tidak ada data contoh yang dibagi antar akun panti.
   const [pantiChildren, setPantiChildren] = useState([]);
-  const [pantiVolunteers, setPantiVolunteers] = useState([]);
   const [pantiDataLoaded, setPantiDataLoaded] = useState(false);
 
   const [showAddChildModal, setShowAddChildModal] = useState(false);

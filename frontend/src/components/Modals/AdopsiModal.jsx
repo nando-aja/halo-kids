@@ -88,8 +88,6 @@ export default function AdopsiModal({ isOpen, onClose }) {
     return () => { active = false; };
   }, [isOpen]);
 
-  if (!isOpen) return null;
-
   // Active Tab: 'panduan' | 'kelayakan' | 'formulir' | 'lacak'
   const [activeTab, setActiveTab] = useState('panduan');
 
@@ -167,6 +165,9 @@ export default function AdopsiModal({ isOpen, onClose }) {
     peksosAssigned: 'Ns. Ratna Juwita, S.Tr.Sos (Peksos Utama)',
     notes: 'Home Visit & Asesmen Kesediaan Keluarga telah lolos dengan skor Sangat Layak. Saat ini menunggu keputusan Sidang Tim PIPA Dinsos.'
   });
+
+  // Early return harus SETELAH semua hook (Rules of Hooks).
+  if (!isOpen) return null;
 
   // Sample database tickets for tracking demo
   const sampleTickets = {
