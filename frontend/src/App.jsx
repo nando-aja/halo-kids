@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import LandingPage from './views/LandingPage';
 import DashboardUtama from './views/DashboardUtama';
 import FormulirPengaduanView from './views/FormulirPengaduanView';
@@ -26,6 +26,13 @@ import AiAssistant from './components/AiAssistant';
 // Peran backend menjadi sumber utama. roleMode tidak boleh memberi akses,
 // karena ia bisa berasal dari pilihan tampilan/demo yang lama.
 
+
+// Kunci penyimpanan snapshot navigasi di history.state browser.
+const NAV_HISTORY_KEY = 'halokidsNav';
+
+// Batas waktu pengguna boleh kembali ke halaman akun (lewat Forward) setelah
+// menekan Back ke halaman sebelum login. Lewat dari ini, wajib login ulang.
+const AUTH_RETURN_TIMEOUT_MS = 5 * 60 * 1000; // 5 menit
 
 const getAuthenticatedRole = (user) => {
   const value = user?.peran || user?.roleCode || user?.role || '';
@@ -102,7 +109,7 @@ const [viewMode, setViewMode] = useState(() => {
   const [activeTab, setActiveTab] = useState('beranda');
 
   // Auth User State: loaded from localStorage if exists
-  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+  const [hasSession, setHasSession] = useState(() => {
     try {
       const sess = localStorage.getItem('halokids_active_session');
       return !!sess;
@@ -110,7 +117,7 @@ const [viewMode, setViewMode] = useState(() => {
       return false;
     }
   });
-  const [currentUser, setCurrentUser] = useState(() => {
+  const [sessionUser, setSessionUser] = useState(() => {
     try {
       const sess = localStorage.getItem('halokids_active_session');
       return sess ? JSON.parse(sess) : null;
@@ -118,6 +125,13 @@ const [viewMode, setViewMode] = useState(() => {
       return null;
     }
   });
+
+  // Sesi ditangguhkan: pengguna menekan Back dari halaman akun ke halaman
+  // sebelum login. Tampilan jadi seperti tamu, tapi sesi belum dihapus
+  // sehingga Forward (sebelum batas waktu) bisa kembali tanpa login ulang.
+  const [isSessionSuspended, setIsSessionSuspended] = useState(false);
+  const isLoggedIn = hasSession && !isSessionSuspended;
+  const currentUser = isSessionSuspended ? null : sessionUser;
 
   // Shared Volunteer Registrations State (Requirement Volunteer)
   const [volunteerRegistrations, setVolunteerRegistrations] = useState([
@@ -187,11 +201,149 @@ const [viewMode, setViewMode] = useState(() => {
   const [selectedPanti, setSelectedPanti] = useState(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
+  // ----------------------------------------------------------------
+  // SINKRONISASI RIWAYAT BROWSER (tombol Back / Forward)
+  // Aplikasi ini berpindah halaman lewat state (bukan URL), jadi tanpa
+  // sinkronisasi ini browser menganggap hanya ada 1 halaman dan tombol
+  // Back langsung keluar dari web. Setiap perpindahan halaman dicatat
+  // sebagai entri riwayat, dan Back/Forward memulihkan state tersebut.
+  //
+  // Tiap entri juga mencatat `authed` (apakah saat itu pengguna login):
+  //  - Back ke entri sebelum login  -> sesi ditangguhkan (tampil sebagai tamu)
+  //  - Forward ke entri setelah login:
+  //      * sebelum batas waktu -> sesi dilanjutkan
+  //      * lewat batas waktu / sesi sudah berakhir -> wajib login ulang
+  // ----------------------------------------------------------------
+  const hasSessionRef = useRef(hasSession);
+  const sessionUserRef = useRef(sessionUser);
+  const suspendedRef = useRef(isSessionSuspended);
+  const suspendedAtRef = useRef(0);
+  const historyReadyRef = useRef(false);
+
+  useEffect(() => { hasSessionRef.current = hasSession; }, [hasSession]);
+  useEffect(() => { sessionUserRef.current = sessionUser; }, [sessionUser]);
+  useEffect(() => { suspendedRef.current = isSessionSuspended; }, [isSessionSuspended]);
+
+  // Akhiri sesi sepenuhnya (token + data sesi dihapus).
+  const endSession = useCallback(() => {
+    authService.logout();
+    setHasSession(false);
+    setSessionUser(null);
+    setIsSessionSuspended(false);
+    try {
+      localStorage.removeItem('halokids_active_session');
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  // Sesi yang ditangguhkan otomatis berakhir setelah batas waktu.
+  useEffect(() => {
+    if (!isSessionSuspended) return undefined;
+    const timer = setTimeout(endSession, AUTH_RETURN_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [isSessionSuspended, endSession]);
+
+  // Catat setiap perubahan halaman / status login sebagai entri riwayat baru.
+  useEffect(() => {
+    const snapshot = { viewMode, activeTab, authed: isLoggedIn };
+    const saved = window.history.state?.[NAV_HISTORY_KEY];
+
+    // Entri pertama (saat web dibuka) cukup di-replace, jangan di-push,
+    // supaya tidak ada entri kembar.
+    if (!historyReadyRef.current) {
+      historyReadyRef.current = true;
+      window.history.replaceState({ ...window.history.state, [NAV_HISTORY_KEY]: snapshot }, '');
+      return;
+    }
+
+    // State ini berasal dari Back/Forward (sudah cocok dengan riwayat): jangan push lagi.
+    if (
+      saved &&
+      saved.viewMode === viewMode &&
+      saved.activeTab === activeTab &&
+      saved.authed === isLoggedIn
+    ) {
+      return;
+    }
+
+    window.history.pushState({ ...window.history.state, [NAV_HISTORY_KEY]: snapshot }, '');
+  }, [viewMode, activeTab, isLoggedIn]);
+
+  // Pulihkan halaman saat pengguna menekan Back / Forward.
+  useEffect(() => {
+    const handlePopState = (event) => {
+      const saved = event.state?.[NAV_HISTORY_KEY];
+      if (!saved) return;
+
+      let nextMode = saved.viewMode;
+      let nextTab = saved.activeTab;
+
+      // Tutup modal/overlay agar tidak "menempel" di halaman sebelumnya.
+      setIsLaporOpen(false);
+      setIsLacakOpen(false);
+      setIsHotlineOpen(false);
+      setIsLoginOpen(false);
+      setIsAdopsiOpen(false);
+      setIsMapOpen(false);
+      setSelectedPanti(null);
+      setIsMobileSidebarOpen(false);
+
+      // Halaman ini dulunya dibuka dalam keadaan login: tentukan nasib sesinya.
+      const requireRelogin = () => {
+        nextMode = 'landing';
+        nextTab = 'beranda';
+        window.history.replaceState(
+          {
+            ...event.state,
+            [NAV_HISTORY_KEY]: { viewMode: 'landing', activeTab: 'beranda', authed: false },
+          },
+          ''
+        );
+        setIsLoginOpen(true);
+      };
+
+      if (saved.authed) {
+        if (!hasSessionRef.current) {
+          requireRelogin();
+        } else if (suspendedRef.current) {
+          const awayMs = Date.now() - suspendedAtRef.current;
+          if (awayMs > AUTH_RETURN_TIMEOUT_MS) {
+            endSession();
+            requireRelogin();
+          } else {
+            setIsSessionSuspended(false);
+          }
+        }
+      } else if (hasSessionRef.current && !suspendedRef.current) {
+        // Kembali ke halaman sebelum login: tangguhkan sesi, mulai hitung waktu.
+        suspendedAtRef.current = Date.now();
+        setIsSessionSuspended(true);
+      }
+
+      // Jangan biarkan Back/Forward membuka Workspace untuk akun yang tidak berhak.
+      if (
+        nextMode === 'dashboard' &&
+        (!hasSessionRef.current || !canUseAdminDashboard(sessionUserRef.current))
+      ) {
+        nextMode = 'landing';
+        nextTab = 'beranda';
+      }
+
+      setViewMode(nextMode);
+      setActiveTab(nextTab);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [endSession]);
+
   // Listen to 401 Unauthorized globally from apiClient interceptor
   useEffect(() => {
     const handleAuthExpired = () => {
-      setIsLoggedIn(false);
-      setCurrentUser(null);
+      setHasSession(false);
+      setSessionUser(null);
+      setIsSessionSuspended(false);
       setIsLoginOpen(true);
     };
 
@@ -202,9 +354,10 @@ const [viewMode, setViewMode] = useState(() => {
   }, []);
 
   const handleLoginSuccess = (user) => {
-    setIsLoggedIn(true);
+    setHasSession(true);
+    setIsSessionSuspended(false);
     const loggedUser = user || { name: 'Warga', role: 'User Publik', email: 'warga@gmail.com' };
-    setCurrentUser(loggedUser);
+    setSessionUser(loggedUser);
     try {
       localStorage.setItem('halokids_active_session', JSON.stringify(loggedUser));
     } catch (e) {
@@ -219,7 +372,7 @@ const [viewMode, setViewMode] = useState(() => {
   // Gabungkan data terbaru ke sesi (mis. status pengajuan LKSA berubah
   // setelah Dinsos memutuskan) dan simpan agar tetap ada setelah refresh.
   const handleUserUpdate = (patch) => {
-    setCurrentUser((prev) => {
+    setSessionUser((prev) => {
       if (!prev) return prev;
       const next = { ...prev, ...patch };
       try {
@@ -233,8 +386,9 @@ const [viewMode, setViewMode] = useState(() => {
 
   const handleLogout = () => {
     authService.logout();
-    setIsLoggedIn(false);
-    setCurrentUser(null);
+    setHasSession(false);
+    setSessionUser(null);
+    setIsSessionSuspended(false);
     try {
       localStorage.removeItem('halokids_active_session');
     } catch (e) {
