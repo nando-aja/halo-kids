@@ -4,7 +4,7 @@ import {
   Building2, PhoneCall, FileCheck2, EyeOff, LogIn, ClipboardList, BadgeCheck, UserPlus
 } from 'lucide-react';
 
-const SLIDE_INTERVAL_MS = 5000;
+const SLIDE_INTERVAL_MS = 3000;
 
 export default function HeroSection({
   onOpenLapor,
