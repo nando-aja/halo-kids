@@ -180,6 +180,8 @@ const [viewMode, setViewMode] = useState(() => {
   const [isLacakOpen, setIsLacakOpen] = useState(false);
   const [isHotlineOpen, setIsHotlineOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+  // Preset untuk membuka LoginModal langsung di form daftar (mis. dari slide hero "Daftar Panti")
+  const [loginPreset, setLoginPreset] = useState(null);
   const [isAdopsiOpen, setIsAdopsiOpen] = useState(false);
   const [isMapOpen, setIsMapOpen] = useState(false);
   const [selectedPanti, setSelectedPanti] = useState(null);
@@ -336,6 +338,7 @@ const [viewMode, setViewMode] = useState(() => {
               onOpenLacak={() => setIsLacakOpen(true)}
               onOpenHotline={() => setIsHotlineOpen(true)}
               onOpenLogin={() => setIsLoginOpen(true)}
+              onOpenRegisterPanti={() => { setLoginPreset({ role: 'pengelola panti', register: true }); setIsLoginOpen(true); }}
               onOpenAdopsi={() => setIsAdopsiOpen(true)}
               onOpenMap={() => setIsMapOpen(true)}
               onSelectPanti={(pantiObj) => setSelectedPanti(pantiObj)}
@@ -379,6 +382,7 @@ const [viewMode, setViewMode] = useState(() => {
             onOpenLacak={() => setIsLacakOpen(true)}
             onOpenHotline={() => setIsHotlineOpen(true)}
             onOpenLogin={() => setIsLoginOpen(true)}
+            onOpenRegisterPanti={() => { setLoginPreset({ role: 'pengelola panti', register: true }); setIsLoginOpen(true); }}
             onOpenAdopsi={() => setIsAdopsiOpen(true)}
             onOpenMap={() => setIsMapOpen(true)}
             onSelectPanti={(pantiObj) => setSelectedPanti(pantiObj)}
@@ -526,7 +530,9 @@ const [viewMode, setViewMode] = useState(() => {
 
       <LoginModal 
         isOpen={isLoginOpen}
-        onClose={() => setIsLoginOpen(false)}
+        initialRole={loginPreset?.role}
+        initialRegister={loginPreset?.register}
+        onClose={() => { setIsLoginOpen(false); setLoginPreset(null); }}
         isLoggedIn={isLoggedIn}
         currentUser={currentUser}
         onLoginSuccess={handleLoginSuccess}

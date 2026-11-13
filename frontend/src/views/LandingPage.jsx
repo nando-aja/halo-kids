@@ -20,6 +20,7 @@ export default function LandingPage({
   onOpenLacak,
   onOpenHotline,
   onOpenLogin,
+  onOpenRegisterPanti,
   onOpenAdopsi,
   onOpenMap,
   onSelectPanti,
@@ -53,6 +54,9 @@ export default function LandingPage({
       <HeroSection 
         onOpenLapor={onOpenLapor}
         onOpenHotline={onOpenHotline}
+        onOpenAdopsi={onOpenAdopsi}
+        onOpenLogin={onOpenLogin}
+        onOpenRegisterPanti={onOpenRegisterPanti}
       />
 
       {/* 4. Quick Actions Grid Cards */}

@@ -70,7 +70,9 @@ export default function LoginModal({
   isLoggedIn = false,
   currentUser = null,
   onLoginSuccess,
-  onLogout
+  onLogout,
+  initialRole = null,
+  initialRegister = false
 }) {
   // State Langkah Alur (Multi-Step SSO Flow)
   const [selectedRole, setSelectedRole] = useState(null); // 'masyarakat' | 'pengelola panti' | 'admin' | null
@@ -94,6 +96,15 @@ export default function LoginModal({
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [showRegConfirmPassword, setShowRegConfirmPassword] = useState(false);
   const [regError, setRegError] = useState(null);
+
+  // Buka langsung di peran/form daftar tertentu bila diminta (mis. dari hero "Daftar Panti")
+  useEffect(() => {
+    if (!isOpen || isLoggedIn) return;
+    if (initialRole) {
+      setSelectedRole(initialRole);
+      setIsRegisterMode(!!initialRegister);
+    }
+  }, [isOpen, initialRole, initialRegister, isLoggedIn]);
 
   // Lock body scroll saat modal aktif
   useEffect(() => {
