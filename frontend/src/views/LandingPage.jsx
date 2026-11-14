@@ -57,6 +57,7 @@ export default function LandingPage({
         onOpenAdopsi={onOpenAdopsi}
         onOpenLogin={onOpenLogin}
         onOpenRegisterPanti={onOpenRegisterPanti}
+        onSwitchToDonasi={onSwitchToDonasi}
       />
 
       {/* 4. Quick Actions Grid Cards */}

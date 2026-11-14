@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, UserCheck, Menu, X, MessageCircle, LogOut, User, Lock, Unlock, Building2, Heart, FileText, Home, LayoutDashboard } from 'lucide-react';
+import { HeartHandshake, UserCheck, Menu, X, MessageCircle, LogOut, User, Lock, Unlock, Building2, Heart, FileText, Home, LayoutDashboard } from 'lucide-react';
 import NotificationDropdown from './NotificationDropdown';
 
 export default function Navbar({
@@ -70,7 +70,7 @@ export default function Navbar({
             justifyContent: 'center',
             boxShadow: '0 4px 10px rgba(29, 78, 216, 0.3)'
           }}>
-            <Shield size={24} />
+            <HeartHandshake size={24} />
           </div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -90,9 +90,10 @@ export default function Navbar({
                 fontWeight: '800',
                 padding: '0.15rem 0.5rem',
                 borderRadius: '6px',
-                letterSpacing: '0.05em'
+                letterSpacing: '0.05em',
+                whiteSpace: 'nowrap'
               }}>
-                DINSOS
+                LAYANAN SOSIAL TERPADU
               </span>
             </div>
             <p style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: '500', margin: 0 }}>

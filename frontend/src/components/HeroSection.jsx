@@ -1,17 +1,20 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
-  ShieldCheck, Lock, Award, HeartHandshake, ArrowRight, UserCheck, Megaphone,
-  Building2, PhoneCall, FileCheck2, EyeOff, LogIn, ClipboardList, BadgeCheck, UserPlus
+  ShieldCheck, Shield, Award, HeartHandshake, ArrowRight, UserCheck, Megaphone,
+  Building2, PhoneCall, FileCheck2, EyeOff, LogIn, ClipboardList, BadgeCheck, UserPlus,
+  HandHeart, Gift, Wallet, PackageCheck
 } from 'lucide-react';
 
-const SLIDE_INTERVAL_MS = 3000;
+// Jeda pergantian slide otomatis: 3,7 detik.
+const SLIDE_INTERVAL_MS = 3700;
 
 export default function HeroSection({
   onOpenLapor,
   onOpenHotline,
   onOpenAdopsi,
   onOpenLogin,
-  onOpenRegisterPanti
+  onOpenRegisterPanti,
+  onSwitchToDonasi
 }) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -27,11 +30,11 @@ export default function HeroSection({
       accent: 'linear-gradient(135deg, #1d4ed8 0%, #0284c7 100%)',
       desc: 'Sistem terintegrasi pemantauan 28 LKSA terakreditasi, penanganan darurat kekerasan anak dengan jaminan kerahasiaan identitas, dan transparansi donasi terverifikasi.',
       note: {
-        icon: Lock,
+        icon: Shield,
         iconBg: '#e0e7ff',
         iconColor: '#3730a3',
-        title: 'Komitmen Pelapor 100% Anonim',
-        text: 'Laporan Anda dilindungi tingkat tinggi. Identitas pelapor/korban dilindungi UU Perlindungan Saksi dan Korban (LPSK) tanpa pungutan biaya.'
+        title: 'Panti Asuhan Terdaftar & Diawasi Dinas Sosial',
+        text: 'Setiap panti asuhan (LKSA) di website ini terdata resmi dan diawasi langsung oleh Dinas Sosial setempat, sehingga anak asuh terlindungi dan bantuan tersalur dengan aman.'
       },
       ctas: [],
       image: '/hero.jpg',
@@ -59,8 +62,8 @@ export default function HeroSection({
       ctas: [
         { label: 'Ajukan Adopsi', icon: ArrowRight, onClick: onOpenAdopsi, variant: 'green' }
       ],
-      image: '/lksa2.jpg',
-      imageAlt: 'Anak-anak bermain bersama pengasuh di ruang bermain panti',
+      image: '/adopsi.jpg',
+      imageAlt: 'Seorang anak sedang di adopsi oleh Calon Orang Tua Angkat',
       tag: { icon: UserCheck, iconColor: '#86efac', text: 'Prosedur Resmi COTA' },
       quote: '"Setiap anak berhak tumbuh dalam keluarga yang menyayanginya."',
       quoteSrc: 'Layanan Adopsi Dinsos',
@@ -94,6 +97,31 @@ export default function HeroSection({
       stat: { icon: EyeOff, label: 'Identitas Pelapor', value: 'Dirahasiakan' }
     },
     {
+      id: 'donasi',
+      tab: 'Donasi',
+      badge: { icon: HandHeart, text: 'DONASI UANG & BARANG • TRANSPARAN', tone: 'amber' },
+      title: 'Ingin Berbagi Kebaikan?',
+      titleAccent: 'Donasi Uang atau Barang',
+      accent: 'linear-gradient(135deg, #d97706 0%, #ea580c 100%)',
+      desc: 'Salurkan bantuan berupa uang maupun barang kebutuhan seperti sembako, seragam, dan perlengkapan sekolah langsung ke panti asuhan terdaftar. Setiap donasi tercatat dan bisa dipantau.',
+      note: {
+        icon: PackageCheck,
+        iconBg: '#fef3c7',
+        iconColor: '#b45309',
+        title: 'Tercatat, terverifikasi, tersalurkan',
+        text: 'Bukti donasi uang diverifikasi dan donasi barang dikonfirmasi saat diterima panti, jadi bantuan Anda sampai ke anak yang membutuhkan.'
+      },
+      ctas: [
+        { label: 'Donasi Sekarang', icon: HandHeart, onClick: onSwitchToDonasi, variant: 'amber' }
+      ],
+      image: '/donasi.jpg',
+      imageAlt: 'Donasi uang dan barang untuk anak-anak panti asuhan',
+      tag: { icon: Gift, iconColor: '#fcd34d', text: 'Donasi Uang & Barang' },
+      quote: '"Kebaikan kecil hari ini bisa menjadi harapan besar bagi seorang anak."',
+      quoteSrc: 'Program Donasi HaloKids',
+      stat: { icon: Wallet, label: 'Jenis Donasi', value: 'Uang & Barang' }
+    },
+    {
       id: 'panti',
       tab: 'Daftar Panti',
       badge: { icon: Building2, text: 'MITRA LKSA • PENGELOLA PANTI', tone: 'blue' },
@@ -106,8 +134,8 @@ export default function HeroSection({
         { label: 'Buat Akun Panti', icon: UserPlus, onClick: onOpenRegisterPanti, variant: 'blue' },
         { label: 'Sudah punya akun? Masuk', icon: LogIn, onClick: onOpenLogin, variant: 'outline' }
       ],
-      image: '/lksa3.jpg',
-      imageAlt: 'Anak-anak belajar di laboratorium komputer',
+      image: '/lksa2.jpg',
+      imageAlt: 'Anak-anak bermain bersama pengasuh di ruang bermain panti',
       tag: { icon: BadgeCheck, iconColor: '#93c5fd', text: 'Terhubung Langsung ke Dinsos' },
       quote: '"Panti yang terdata resmi memudahkan bantuan sampai ke anak yang membutuhkan."',
       quoteSrc: 'Program Kemitraan LKSA',
@@ -143,7 +171,8 @@ export default function HeroSection({
   const badgeTones = {
     blue:  { bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
     green: { bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' },
-    red:   { bg: '#fef2f2', color: '#b91c1c', border: '#fecaca' }
+    red:   { bg: '#fef2f2', color: '#b91c1c', border: '#fecaca' },
+    amber: { bg: '#fffbeb', color: '#b45309', border: '#fde68a' }
   };
 
   return (
@@ -454,6 +483,8 @@ export default function HeroSection({
         .hero-cta-red:hover { background: #b91c1c; }
         .hero-cta-blue { background: #1d4ed8; color: #fff; box-shadow: 0 6px 16px rgba(29,78,216,0.28); }
         .hero-cta-blue:hover { background: #1e40af; }
+        .hero-cta-amber { background: #d97706; color: #fff; box-shadow: 0 6px 16px rgba(217,119,6,0.3); }
+        .hero-cta-amber:hover { background: #b45309; }
         .hero-cta-outline { background: #ffffff; color: #0b1f5c; border-color: #cbd5e1; }
         .hero-cta-outline:hover { background: #f8fafc; }
 
