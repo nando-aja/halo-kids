@@ -167,14 +167,12 @@ def _remove_placeholder(path: Path) -> None:
 
 
 def save_upload_file(file: UploadFile, folder_name: str, prefix: str = "") -> str:
-    """Upload a real file to Supabase first; local copy is only a mirror/cache."""
+    """Upload a real file to Supabase if configured, and always mirror/store locally."""
     if folder_name not in STORAGE_FOLDERS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Folder storage tidak valid",
         )
-    _require_supabase()
-    bucket_name = _get_bucket_name(folder_name)
 
     if not file.filename:
         raise HTTPException(
@@ -222,35 +220,37 @@ def save_upload_file(file: UploadFile, folder_name: str, prefix: str = "") -> st
         elif extension == ".pdf":
             content_type = "application/pdf"
 
-        try:
-            supabase.storage.from_(bucket_name).upload(
-                path=object_path,
-                file=file_bytes,
-                file_options={
-                    "content-type": content_type,
-                    "cache-control": "3600",
-                    "upsert": "false",
-                },
-            )
-        except Exception as exc:
-            logger.exception("Supabase upload failed for folder %s", folder_name)
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=(
-                    "Upload ke Supabase Storage gagal. Periksa nama bucket, "
-                    "izin akses, koneksi, dan secret key backend. Pengajuan "
-                    "belum boleh dilanjutkan dengan berkas ini."
-                ),
-            ) from exc
+        if supabase is not None:
+            bucket_name = _get_bucket_name(folder_name)
+            try:
+                supabase.storage.from_(bucket_name).upload(
+                    path=object_path,
+                    file=file_bytes,
+                    file_options={
+                        "content-type": content_type,
+                        "cache-control": "3600",
+                        "upsert": "false",
+                    },
+                )
+            except Exception as exc:
+                logger.exception("Supabase upload failed for folder %s", folder_name)
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=(
+                        "Upload ke Supabase Storage gagal. Periksa nama bucket, "
+                        "izin akses, koneksi, dan secret key backend. Pengajuan "
+                        "belum boleh dilanjutkan dengan berkas ini."
+                    ),
+                ) from exc
 
-        # Keep an optional local mirror to support OCR/FileResponse code that
-        # expects a Path. Remote upload already succeeded before this step.
+        # Keep a local copy to support OCR/FileResponse code that expects a Path.
+        # When Supabase is not configured, this serves as the primary local storage.
         try:
             local_path = (STORAGE_DIR / folder_name / filename).resolve()
             local_path.parent.mkdir(parents=True, exist_ok=True)
             local_path.write_bytes(file_bytes)
         except OSError:
-            logger.warning("Supabase upload succeeded but local mirror failed.", exc_info=True)
+            logger.warning("Local storage write failed.", exc_info=True)
 
         return f"storage/{object_path}"
     except HTTPException:
@@ -270,7 +270,6 @@ def save_upload_file(file: UploadFile, folder_name: str, prefix: str = "") -> st
 
 def get_storage_absolute_path(relative_path: str) -> Path:
     """Return a real local/cache file, downloading it from Supabase when necessary."""
-    bucket_name, object_path = _get_object_path(relative_path)
     local_path = _safe_local_path(relative_path)
     cache_path = _get_cache_path(relative_path)
 
@@ -284,7 +283,13 @@ def get_storage_absolute_path(relative_path: str) -> Path:
     if cache_path.is_file():
         return cache_path
 
-    _require_supabase()
+    if supabase is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File tidak ditemukan di penyimpanan lokal.",
+        )
+
+    bucket_name, object_path = _get_object_path(relative_path)
     try:
         file_bytes = supabase.storage.from_(bucket_name).download(object_path)
         if not file_bytes or file_bytes == OLD_PLACEHOLDER_BYTES:
@@ -389,17 +394,17 @@ def list_folder_files(folder_name: str, prefix: str = "") -> list[dict]:
 
 
 def delete_stored_file(relative_path: str) -> None:
-    """Delete the remote object first; preserve local copies if remote deletion fails."""
-    bucket_name, object_path = _get_object_path(relative_path)
-    _require_supabase()
-    try:
-        supabase.storage.from_(bucket_name).remove([object_path])
-    except Exception as exc:
-        logger.exception("Supabase deletion failed for object %s", object_path)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Gagal menghapus berkas dari Supabase Storage.",
-        ) from exc
+    """Delete the remote object if Supabase is enabled; and delete local copies."""
+    if supabase is not None:
+        bucket_name, object_path = _get_object_path(relative_path)
+        try:
+            supabase.storage.from_(bucket_name).remove([object_path])
+        except Exception as exc:
+            logger.exception("Supabase deletion failed for object %s", object_path)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Gagal menghapus berkas dari Supabase Storage.",
+            ) from exc
 
     local_path = _safe_local_path(relative_path)
     cache_path = _get_cache_path(relative_path)
@@ -407,4 +412,4 @@ def delete_stored_file(relative_path: str) -> None:
         try:
             path.unlink(missing_ok=True)
         except OSError:
-            logger.warning("Remote file deleted, but local cache cleanup failed.", exc_info=True)
+            logger.warning("Local cache cleanup failed.", exc_info=True)

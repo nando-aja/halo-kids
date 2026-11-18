@@ -16,6 +16,7 @@ from app.api.deps import get_db
 from app.core.security import hash_password
 from app.db.database import Base
 from app.db.models.panti import PantiAsuhan
+from app.db.models.pengajuan_lksa import PengajuanLKSA
 from app.db.models.user import User
 from app.db.models.wishlist import WishlistPanti
 from app.main import app
@@ -55,6 +56,15 @@ def _setup_client():
     db.add(panti)
     db.commit()
     db.refresh(panti)
+    db.add(PengajuanLKSA(
+        id_pengelola=manager.id,
+        id_panti=panti.id,
+        nama_panti=panti.nama_panti,
+        bentuk_lembaga="berbadan_hukum",
+        alamat=panti.alamat,
+        status_pengajuan="disetujui",
+    ))
+    db.commit()
     wishlist = WishlistPanti(
         id_panti=panti.id,
         nama_barang="Beras",

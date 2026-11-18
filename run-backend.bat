@@ -1,6 +1,6 @@
 @echo off
 title HaloKids Backend Server
-cd /d "%~dp0halokids-backend-main (5)\halokids-backend-main"
+cd /d "%~dp0backend"
 echo ==============================================
 echo Menjalankan Backend HaloKids (FastAPI/Port 8000)
 echo Pastikan MySQL di XAMPP sudah aktif (Port 3306)

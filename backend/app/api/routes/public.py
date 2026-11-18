@@ -200,6 +200,109 @@ def get_public_dana_reports(
 
 
 @router.post(
+    "/pengaduan",
+    response_model=PublicReportStatus,
+    status_code=201,
+)
+def create_public_report(
+    data: ReportCreate,
+    current_user: User | None = Depends(get_optional_current_user),
+    db: Session = Depends(get_db),
+):
+    """Simpan laporan pengaduan tanpa lampiran file."""
+    if data.submission_key:
+        existing_report = (
+            db.query(LaporanPengaduan)
+            .filter(
+                LaporanPengaduan.submission_key == data.submission_key
+            )
+            .first()
+        )
+
+        if existing_report is not None:
+            return {
+                "kode_tiket": existing_report.kode_tiket,
+                "status": existing_report.status,
+                "tanggal_lapor": existing_report.tanggal_lapor,
+                "lampiran_tersimpan": 0,
+            }
+
+    ticket_code = (
+        f"HK-{date.today():%Y%m%d}-"
+        f"{uuid4().hex[:8].upper()}"
+    )
+
+    report = LaporanPengaduan(
+        id_user=current_user.id if current_user else None,
+        kode_tiket=ticket_code,
+        isi_laporan=data.isi_laporan,
+        jenis_laporan=data.jenis_laporan,
+        status="baru",
+        submission_key=data.submission_key or f"key-{uuid4().hex}",
+    )
+
+    try:
+        db.add(report)
+        db.flush()
+
+        admins = (
+            db.query(User)
+            .filter(User.peran == "admin")
+            .all()
+        )
+
+        for admin in admins:
+            create_notification(
+                db,
+                admin.id,
+                "Laporan Baru",
+                f"Laporan {report.kode_tiket} masuk dan menunggu diproses.",
+            )
+
+        actor_name = (
+            getattr(current_user, "nama", None)
+            if current_user
+            else None
+        ) or "Pelapor anonim"
+
+        actor_role = (
+            getattr(current_user, "peran", None)
+            if current_user
+            else None
+        ) or "anonim"
+
+        db.add(
+            AuditLogPengaduan(
+                id_laporan=report.id,
+                id_aktor=current_user.id if current_user else None,
+                nama_aktor=str(actor_name),
+                peran_aktor=str(
+                    getattr(actor_role, "value", actor_role)
+                ),
+                aksi="laporan_dibuat",
+                status_sesudah=str(report.status),
+            )
+        )
+
+        db.commit()
+        db.refresh(report)
+
+        return {
+            "kode_tiket": report.kode_tiket,
+            "status": report.status,
+            "tanggal_lapor": report.tanggal_lapor,
+            "lampiran_tersimpan": 0,
+        }
+
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Gagal menyimpan laporan pengaduan.",
+        ) from exc
+
+
+@router.post(
     "/pengaduan/dengan-lampiran",
     response_model=PublicReportStatus,
     status_code=201,

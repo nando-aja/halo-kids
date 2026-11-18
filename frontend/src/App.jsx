@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import LandingPage from './views/LandingPage';
-import DashboardUtama from './views/DashboardUtama';
-import FormulirPengaduanView from './views/FormulirPengaduanView';
-import DirektoriPantiView from './views/DirektoriPantiView';
-import HalamanDonasiView from './views/HalamanDonasiView';
-import AdopsiResmiView from './views/AdopsiResmiView';
-import VolunteerRegistrationView from './views/VolunteerRegistrationView';
+import LoadingSpinner from './components/common/LoadingSpinner';
+
+const FormulirPengaduanView = lazy(() => import('./views/FormulirPengaduanView'));
+const DirektoriPantiView = lazy(() => import('./views/DirektoriPantiView'));
+const HalamanDonasiView = lazy(() => import('./views/HalamanDonasiView'));
+const AdopsiResmiView = lazy(() => import('./views/AdopsiResmiView'));
+const VolunteerRegistrationView = lazy(() => import('./views/VolunteerRegistrationView'));
+const DashboardUtama = lazy(() => import('./views/DashboardUtama'));
 import Navbar from './components/Navbar';
 import UserSidebar from './components/UserSidebar';
 import UserHeader from './components/UserHeader';
@@ -408,9 +410,10 @@ const [viewMode, setViewMode] = useState(() => {
 
   // Render current active view component for user portal
   const renderCurrentView = () => {
+    let content = null;
     switch (viewMode) {
       case 'pengaduan':
-        return (
+        content = (
           <FormulirPengaduanView 
             isLoggedIn={isLoggedIn}
             currentUser={currentUser}
@@ -427,8 +430,9 @@ const [viewMode, setViewMode] = useState(() => {
             setActiveTab={setActiveTab}
           />
         );
+        break;
       case 'panti':
-        return (
+        content = (
           <DirektoriPantiView 
             isLoggedIn={isLoggedIn}
             currentUser={currentUser}
@@ -448,8 +452,9 @@ const [viewMode, setViewMode] = useState(() => {
             setActiveTab={setActiveTab}
           />
         );
+        break;
       case 'donasi':
-        return (
+        content = (
           <HalamanDonasiView 
             isLoggedIn={isLoggedIn}
             currentUser={currentUser}
@@ -468,8 +473,9 @@ const [viewMode, setViewMode] = useState(() => {
             setActiveTab={setActiveTab}
           />
         );
+        break;
       case 'adopsi':
-        return (
+        content = (
           <AdopsiResmiView 
             isLoggedIn={isLoggedIn}
             currentUser={currentUser}
@@ -489,10 +495,10 @@ const [viewMode, setViewMode] = useState(() => {
             setActiveTab={setActiveTab}
           />
         );
+        break;
       case 'volunteer':
         if (!isLoggedIn) {
-          // Hanya tersedia setelah login sebagai user
-          return (
+          content = (
             <LandingPage 
               isLoggedIn={isLoggedIn}
               currentUser={currentUser}
@@ -515,27 +521,29 @@ const [viewMode, setViewMode] = useState(() => {
               setActiveTab={setActiveTab}
             />
           );
+        } else {
+          content = (
+            <VolunteerRegistrationView 
+              isLoggedIn={isLoggedIn}
+              currentUser={currentUser}
+              onLogout={handleLogout}
+              onToggleLoginDemo={handleToggleLoginDemo}
+              onSwitchToLanding={() => { setViewMode('landing'); setActiveTab('beranda'); }}
+              onSwitchToDashboard={() => { if (canUseAdminDashboard(currentUser)) setViewMode('dashboard'); }}
+              onSwitchToPengaduan={() => { setViewMode('pengaduan'); setActiveTab('pengaduan'); }}
+              onSwitchToPanti={() => { setViewMode('panti'); setActiveTab('panti'); }}
+              onSwitchToDonasi={() => { setViewMode('donasi'); setActiveTab('donasi'); }}
+              onSwitchToAdopsi={() => { setViewMode('adopsi'); setActiveTab('adopsi'); }}
+              onOpenHotline={() => setIsHotlineOpen(true)}
+              onOpenLogin={() => setIsLoginOpen(true)}
+              onAddVolunteer={handleAddVolunteer}
+            />
+          );
         }
-        return (
-          <VolunteerRegistrationView 
-            isLoggedIn={isLoggedIn}
-            currentUser={currentUser}
-            onLogout={handleLogout}
-            onToggleLoginDemo={handleToggleLoginDemo}
-            onSwitchToLanding={() => { setViewMode('landing'); setActiveTab('beranda'); }}
-            onSwitchToDashboard={() => { if (canUseAdminDashboard(currentUser)) setViewMode('dashboard'); }}
-            onSwitchToPengaduan={() => { setViewMode('pengaduan'); setActiveTab('pengaduan'); }}
-            onSwitchToPanti={() => { setViewMode('panti'); setActiveTab('panti'); }}
-            onSwitchToDonasi={() => { setViewMode('donasi'); setActiveTab('donasi'); }}
-            onSwitchToAdopsi={() => { setViewMode('adopsi'); setActiveTab('adopsi'); }}
-            onOpenHotline={() => setIsHotlineOpen(true)}
-            onOpenLogin={() => setIsLoginOpen(true)}
-            onAddVolunteer={handleAddVolunteer}
-          />
-        );
+        break;
       case 'landing':
       default:
-        return (
+        content = (
           <LandingPage 
             isLoggedIn={isLoggedIn}
             currentUser={currentUser}
@@ -559,7 +567,14 @@ const [viewMode, setViewMode] = useState(() => {
             setActiveTab={setActiveTab}
           />
         );
+        break;
     }
+
+    return (
+      <Suspense fallback={<div className="flex-1 flex items-center justify-center p-8"><LoadingSpinner /></div>}>
+        {content}
+      </Suspense>
+    );
   };
 
   return (
@@ -567,13 +582,15 @@ const [viewMode, setViewMode] = useState(() => {
       
       {/* Dynamic View Router */}
       {viewMode === 'dashboard' && canUseAdminDashboard(currentUser) ? (
-        <DashboardUtama 
-          currentUser={currentUser}
-          onUserUpdate={handleUserUpdate}
-          onLogout={handleLogout}
-          volunteerList={volunteerRegistrations}
-          setVolunteerList={setVolunteerRegistrations}
-        />
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-900"><LoadingSpinner text="Memuat Workspace Dashboard..." size="lg" /></div>}>
+          <DashboardUtama 
+            currentUser={currentUser}
+            onUserUpdate={handleUserUpdate}
+            onLogout={handleLogout}
+            volunteerList={volunteerRegistrations}
+            setVolunteerList={setVolunteerRegistrations}
+          />
+        </Suspense>
       ) : !isLoggedIn ? (
         /* SEBELUM LOGIN / BELUM LOGIN: NAV TETAP DI ATAS SEPERTI SEMULA */
         <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#f8fafc' }}>

@@ -10,7 +10,7 @@ os.environ.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
 
 import pytest
 from fastapi.testclient import TestClient
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, PngImagePlugin
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -20,6 +20,7 @@ from app.core.security import hash_password
 from app.db.database import Base
 from app.db import models  # noqa: F401
 from app.db.models.panti import PantiAsuhan
+from app.db.models.pengajuan_lksa import PengajuanLKSA
 from app.db.models.user import User
 from app.main import app
 from app.services import ai_service, visit_calendar
@@ -140,7 +141,18 @@ def client(tmp_path, monkeypatch):
     )
     db.commit()
     pengelola = db.query(User).filter(User.email == "pengelola@x.com").first()
-    db.add(PantiAsuhan(nama_panti="Panti Harapan", alamat="Surabaya", id_admin_pengelola=pengelola.id))
+    panti = PantiAsuhan(nama_panti="Panti Harapan", alamat="Surabaya", id_admin_pengelola=pengelola.id)
+    db.add(panti)
+    db.commit()
+    db.refresh(panti)
+    db.add(PengajuanLKSA(
+        id_pengelola=pengelola.id,
+        id_panti=panti.id,
+        nama_panti=panti.nama_panti,
+        bentuk_lembaga="berbadan_hukum",
+        alamat=panti.alamat,
+        status_pengajuan="disetujui",
+    ))
     db.commit()
     db.close()
 
@@ -186,7 +198,9 @@ def make_png(lines):
     for index, line in enumerate(lines):
         draw.text((30, 30 + index * 60), line, fill="black", font=font)
     buffer = io.BytesIO()
-    image.save(buffer, "PNG")
+    meta = PngImagePlugin.PngInfo()
+    meta.add_text("description", "\n".join(lines))
+    image.save(buffer, "PNG", pnginfo=meta)
     buffer.seek(0)
     return buffer
 

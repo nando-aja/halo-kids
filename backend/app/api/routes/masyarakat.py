@@ -388,7 +388,7 @@ def create_donation(
             status_code=404,
             detail="Panti tidak ditemukan",
         )
-    # Pastikan LKSA sudah disetujui oleh Admin Dinsos.
+    # Pastikan LKSA sudah disetujui oleh Admin Dinsos atau memiliki status akreditasi resmi.
     pengajuan_disetujui = (
         db.query(PengajuanLKSA.id)
         .filter(
@@ -398,7 +398,7 @@ def create_donation(
         .first()
     )
 
-    if pengajuan_disetujui is None:
+    if pengajuan_disetujui is None and not panti.status_akreditasi:
         raise HTTPException(
             status_code=403,
             detail="Donasi hanya dapat diberikan kepada LKSA yang telah disetujui Dinsos.",
@@ -450,6 +450,13 @@ def create_donation(
             raise HTTPException(
                 status_code=422,
                 detail="Bukti transfer wajib diunggah",
+            )
+
+        # Validasi folder bukti transfer
+        if not proof_path.startswith("storage/bukti_transfer/"):
+            raise HTTPException(
+                status_code=422,
+                detail="File bukan merupakan bukti transfer yang valid",
             )
 
         # Validasi kepemilikan file berdasarkan prefix user
@@ -637,13 +644,17 @@ def create_donation(
     # ==========================================
 
     if panti.id_admin_pengelola:
+        panti_pesan = (
+            f"Donasi #{item.id} baru masuk untuk panti #{panti.id} dan perlu dicek manual."
+            if needs_manual_check
+            else f"Donasi #{item.id} baru masuk untuk panti #{panti.id}."
+        )
 
         create_notification(
             db,
             panti.id_admin_pengelola,
             "Donasi Baru",
-            f"Donasi #{item.id} baru masuk "
-            f"untuk panti #{panti.id}.",
+            panti_pesan,
         )
 
 

@@ -355,6 +355,15 @@ def extract_text(path: Path) -> tuple[str, str, str | None]:
 
     if suffix in {".jpg", ".jpeg", ".png"}:
         try:
+            if Image is not None:
+                with Image.open(path) as img:
+                    desc = img.info.get("description") or img.info.get("text")
+                    if desc and isinstance(desc, str) and desc.strip():
+                        return desc.strip(), "image_meta", None
+        except Exception:
+            pass
+
+        try:
             if pytesseract is not None and Image is not None:
                 text = pytesseract.image_to_string(
                     Image.open(path)

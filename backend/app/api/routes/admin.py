@@ -709,10 +709,12 @@ def analyze_donation_proof(
     # ==========================================
 
     return {
+        **result,
         "message": "Analisis bukti transfer selesai",
         "id_donasi": item.id,
         "nominal_donasi": str(item.jumlah_nominal),
         "nominal_donasi_cocok": nominal_match,
+        "requires_manual_review": requires_manual_review,
         "rekomendasi_ai": recommendation,
         "keputusan_final": "menunggu_persetujuan_dinsos",
         "hasil_analisis_ai": result,
