@@ -185,6 +185,14 @@ export default function FormPengajuanLKSA({
       } catch (error) {
         if (error?.response?.status !== 404) {
           setErrorMessage(getErrorMessage(error));
+        } else {
+          // Belum ada pengajuan: pakai jenis panti pilihan saat registrasi.
+          try {
+            const pending = localStorage.getItem('halokids_pending_jenis_panti');
+            if (pending && active) {
+              setForm((prev) => ({ ...prev, jenis_panti: pending }));
+            }
+          } catch { /* abaikan */ }
         }
       } finally {
         if (active) setLoading(false);
@@ -341,6 +349,7 @@ export default function FormPengajuanLKSA({
       if (!currentApplication) {
         currentApplication =
           await pantiService.createLksaApplication(payload);
+          try { localStorage.removeItem('halokids_pending_jenis_panti'); } catch { /* abaikan */ }
 
         draftWasCreated = true;
         setApplication(currentApplication);
