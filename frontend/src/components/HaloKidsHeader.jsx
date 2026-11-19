@@ -613,7 +613,7 @@ export default function HaloKidsHeader({
               )}
             </div>
 
-            {/* [4] Tombol "Login User" */}
+            {/* [4] Tombol "Login" */}
             <button
               type="button"
               id="header-btn-login-user"
@@ -621,7 +621,7 @@ export default function HaloKidsHeader({
               className="flex items-center gap-1.5 px-4 py-2 bg-blue-900 hover:bg-blue-800 text-white rounded-full text-xs font-bold shadow-sm transition-all cursor-pointer"
             >
               <LogIn size={14} />
-              <span>Login User</span>
+              <span>Login</span>
             </button>
 
           </div>

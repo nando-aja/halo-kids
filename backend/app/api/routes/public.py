@@ -29,6 +29,7 @@ from app.services.storage import list_folder_files, resolve_public_file
 from app.services.public_statistics import get_public_statistics
 from app.db.models.report import LaporanPengaduan
 from app.db.models.report_attachment import LaporanPengaduanLampiran
+from app.db.models.volunteer import Relawan
 from app.services.report_attachments import (
     delete_uploaded_report_attachments,
     upload_report_attachments,
@@ -547,6 +548,34 @@ def get_public_visit_calendar(
         panti_id=panti_id,
         upcoming_only=hanya_mendatang,
     )
+
+
+@router.get(
+    "/relawan/verified",
+)
+def get_public_verified_volunteers(
+    db: Session = Depends(get_db),
+):
+    """Mengambil daftar peserta relawan yang telah disetujui / terverifikasi."""
+    volunteers = (
+        db.query(Relawan)
+        .filter(Relawan.status == "disetujui")
+        .order_by(Relawan.id.desc())
+        .all()
+    )
+    return [
+        {
+            "id": v.id,
+            "id_user": v.id_user,
+            "nama": v.nama or "Relawan Terverifikasi",
+            "bidang": v.bidang or "Bakti Pendidikan & Sosial",
+            "panti_tujuan": v.panti_tujuan or "LKSA Mitra Dinsos",
+            "status": v.status,
+            "tanggal": str(v.tanggal) if v.tanggal else None,
+            "sesi_waktu": v.sesi_waktu or "Fleksibel",
+        }
+        for v in volunteers
+    ]
 
 
 @router.get("/files/{folder}/{filename}")

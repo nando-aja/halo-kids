@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import CotaTrackingModal from './Modals/CotaTrackingModal';
 import {
   ShieldAlert,
@@ -9,8 +9,13 @@ import {
   ChevronRight,
   ArrowRight,
   PhoneCall,
-  Building2
+  Building2,
+  X,
+  Clock,
+  AlertCircle
 } from 'lucide-react';
+import relawanService from '../api/relawanService';
+import donasiService from '../api/donasiService';
 
 /**
  * Dashboard Personal Warga
@@ -31,27 +36,80 @@ export default function DashboardPersonalWarga({
   onSelectPanti = () => {}
 }) {
   const [isCotaTrackingOpen, setIsCotaTrackingOpen] = useState(false);
+  const [isVolunteerListOpen, setIsVolunteerListOpen] = useState(false);
+  const [verifiedVolunteers, setVerifiedVolunteers] = useState([]);
+  const [isUserVerifiedVolunteer, setIsUserVerifiedVolunteer] = useState(false);
+  const [myVolunteerData, setMyVolunteerData] = useState(null);
+
+  const [isDonationHistoryOpen, setIsDonationHistoryOpen] = useState(false);
+  const [userDonations, setUserDonations] = useState([]);
+  const [totalNominalVerified, setTotalNominalVerified] = useState(0);
+  const [verifiedDonationCount, setVerifiedDonationCount] = useState(0);
+
   // Nama Pengguna Dinamis
   const userName = currentUser?.name?.trim() ? currentUser.name : 'Warga';
 
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadUserData() {
+      // 1. Muat riwayat dan kontribusi donasi nyata milik user
+      try {
+        const donations = await donasiService.getMyDonations();
+        if (isMounted && Array.isArray(donations)) {
+          setUserDonations(donations);
+          const verified = donations.filter(d => d.status_verifikasi === 'terverifikasi');
+          const sumNominal = verified.reduce((acc, d) => acc + (Number(d.jumlah_nominal) || 0), 0);
+          setTotalNominalVerified(sumNominal);
+          setVerifiedDonationCount(verified.length);
+        }
+      } catch (err) {
+        console.warn('Gagal memuat donasi warga:', err);
+      }
+
+      // 2. Muat status relawan user & daftar relawan terverifikasi
+      try {
+        const [myRegistrations, allVerified] = await Promise.allSettled([
+          relawanService.getMyRelawan(),
+          relawanService.getVerifiedVolunteers()
+        ]);
+
+        if (isMounted) {
+          let userApprovedRelawan = null;
+          if (myRegistrations.status === 'fulfilled' && Array.isArray(myRegistrations.value)) {
+            userApprovedRelawan = myRegistrations.value.find(r => r.status === 'disetujui');
+            setMyVolunteerData(userApprovedRelawan || myRegistrations.value[0] || null);
+            setIsUserVerifiedVolunteer(!!userApprovedRelawan);
+          }
+
+          if (allVerified.status === 'fulfilled' && Array.isArray(allVerified.value)) {
+            setVerifiedVolunteers(allVerified.value);
+          }
+        }
+      } catch (err) {
+        console.warn('Gagal memuat data relawan:', err);
+      }
+    }
+
+    loadUserData();
+    return () => { isMounted = false; };
+  }, [currentUser]);
+
   // 1. Data Ringkasan Status Layanan (4 Kotak Kartu Berdampingan)
   const summaryCards = [
-{
-  id: 'cota',
-  title: 'Status Pengajuan Adopsi (COTA)',
-  value: '1 Berkas Diproses',
-  badgeText: 'Tahap Verifikasi PIPA',
-  badgeColor: 'bg-blue-100 text-blue-700 border-blue-200',
-  badgeDot: 'bg-blue-600',
-  icon: UserCheck,
-  iconBg: 'bg-blue-50 text-blue-600 border-blue-200',
-  accentBorder: 'hover:border-blue-300',
-
-  // Buka pencarian nomor pengajuan COTA
-  action: () => setIsCotaTrackingOpen(true),
-
-  actionLabel: 'Lihat Pengajuan'
-},
+    {
+      id: 'cota',
+      title: 'Status Pengajuan Adopsi (COTA)',
+      value: '1 Berkas Diproses',
+      badgeText: 'Tahap Verifikasi PIPA',
+      badgeColor: 'bg-blue-100 text-blue-700 border-blue-200',
+      badgeDot: 'bg-blue-600',
+      icon: UserCheck,
+      iconBg: 'bg-blue-50 text-blue-600 border-blue-200',
+      accentBorder: 'hover:border-blue-300',
+      action: () => setIsCotaTrackingOpen(true),
+      actionLabel: 'Lihat Pengajuan'
+    },
     {
       id: 'pengaduan',
       title: 'Laporan Pengaduan Aktif',
@@ -68,27 +126,29 @@ export default function DashboardPersonalWarga({
     {
       id: 'relawan',
       title: 'Program Relawan (Volunteer)',
-      value: 'Terdaftar / Aktif',
-      badgeText: 'Disetujui LKSA',
-      badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-      badgeDot: 'bg-emerald-500',
+      value: isUserVerifiedVolunteer ? 'Terdaftar / Aktif' : 'Belum Terdaftar',
+      badgeText: isUserVerifiedVolunteer ? 'Disetujui LKSA' : 'Belum Terdaftar',
+      badgeColor: isUserVerifiedVolunteer ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-slate-100 text-slate-700 border-slate-200',
+      badgeDot: isUserVerifiedVolunteer ? 'bg-emerald-500' : 'bg-slate-400',
       icon: HeartHandshake,
-      iconBg: 'bg-emerald-50 text-emerald-600 border-emerald-200',
+      iconBg: isUserVerifiedVolunteer ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-slate-50 text-slate-600 border-slate-200',
       accentBorder: 'hover:border-emerald-300',
-      action: onSwitchToVolunteer,
-      actionLabel: 'Jadwal Relawan'
+      action: () => setIsVolunteerListOpen(true),
+      actionLabel: 'Lihat Peserta Relawan'
     },
     {
       id: 'donasi',
       title: 'Kontribusi Donasi',
-      value: 'Rp 250.000 Terverifikasi',
-      badgeText: 'Tervalidasi Audit',
-      badgeColor: 'bg-indigo-100 text-indigo-700 border-indigo-200',
-      badgeDot: 'bg-indigo-600',
+      value: verifiedDonationCount > 0
+        ? `Rp ${totalNominalVerified.toLocaleString('id-ID')} (${verifiedDonationCount}x Donasi)`
+        : 'Rp 0 (Belum Ada Donasi)',
+      badgeText: verifiedDonationCount > 0 ? 'Tervalidasi Audit' : 'Belum Berdonasi',
+      badgeColor: verifiedDonationCount > 0 ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-slate-100 text-slate-700 border-slate-200',
+      badgeDot: verifiedDonationCount > 0 ? 'bg-indigo-600' : 'bg-slate-400',
       icon: Heart,
       iconBg: 'bg-rose-50 text-rose-600 border-rose-200',
       accentBorder: 'hover:border-rose-300',
-      action: onSwitchToDonasi,
+      action: () => setIsDonationHistoryOpen(true),
       actionLabel: 'Riwayat Donasi'
     }
   ];
@@ -377,6 +437,214 @@ export default function DashboardPersonalWarga({
         isOpen={isCotaTrackingOpen}
         onClose={() => setIsCotaTrackingOpen(false)}
       />
+
+      {/* MODAL DAFTAR PESERTA VOLUNTEER TERVERIFIKASI */}
+      {isVolunteerListOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                  <HeartHandshake size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Daftar Peserta Relawan Terverifikasi
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Sahabat Panti &amp; Bakti Sosial Dinsos
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsVolunteerListOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition"
+                aria-label="Tutup modal"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-3.5 flex-1">
+              {/* Keterangan jika user belum terdaftar / belum disetujui (murni kalimat tanpa tombol) */}
+              {!isUserVerifiedVolunteer ? (
+                <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs sm:text-sm font-semibold">
+                  anda tidak masuk daftar, ayo segera daftar jadi relawan!
+                </div>
+              ) : (
+                /* User Sendiri Wajib Tampil Paling Atas */
+                <div className="p-3.5 rounded-xl bg-emerald-50 border-2 border-emerald-500 shadow-2xs space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-extrabold text-xs sm:text-sm text-emerald-950 flex items-center gap-1.5">
+                      <span>{userName} (Anda)</span>
+                      <span className="text-[10px] font-bold bg-emerald-600 text-white px-2 py-0.5 rounded-full">
+                        Akun Anda
+                      </span>
+                    </span>
+                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-200">
+                      Disetujui / Aktif
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-emerald-900 flex flex-wrap gap-x-3 gap-y-1">
+                    <span><strong>Bidang:</strong> {myVolunteerData?.bidang || 'Bakti Sosial & Edukasi'}</span>
+                    <span><strong>Tujuan:</strong> {myVolunteerData?.panti_tujuan || 'LKSA Binaan'}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Daftar Peserta Relawan Lainnya Yang Terverifikasi */}
+              <div className="space-y-2 pt-1">
+                <p className="text-xs font-bold text-slate-700">
+                  Peserta Relawan Terverifikasi Lainnya:
+                </p>
+
+                {verifiedVolunteers.filter(v => v.id_user !== currentUser?.id).length === 0 ? (
+                  <p className="text-xs text-slate-500 italic py-2">
+                    Belum ada peserta relawan terverifikasi lainnya saat ini.
+                  </p>
+                ) : (
+                  verifiedVolunteers
+                    .filter(v => v.id_user !== currentUser?.id)
+                    .map((vol, index) => (
+                      <div
+                        key={vol.id || index}
+                        className="p-3 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition-colors flex items-center justify-between gap-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-900 truncate">
+                            {vol.nama}
+                          </p>
+                          <p className="text-[11px] text-slate-500 truncate">
+                            {vol.bidang || 'Relawan'} • {vol.panti_tujuan || 'LKSA Terdaftar'}
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
+                          Terverifikasi
+                        </span>
+                      </div>
+                    ))
+                )}
+              </div>
+            </div>
+
+            <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsVolunteerListOpen(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl transition"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL RIWAYAT KONTRIBUSI DONASI USER */}
+      {isDonationHistoryOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center">
+                  <Heart size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Riwayat Kontribusi Donasi
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Total: Rp {totalNominalVerified.toLocaleString('id-ID')} ({verifiedDonationCount} kali donasi berhasil)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDonationHistoryOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition"
+                aria-label="Tutup modal"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-3 flex-1">
+              {userDonations.length === 0 ? (
+                <div className="text-center py-8 text-slate-500 space-y-2">
+                  <Heart size={32} className="mx-auto text-slate-300" />
+                  <p className="text-xs font-medium">
+                    Anda belum memiliki riwayat donasi dari akun ini.
+                  </p>
+                </div>
+              ) : (
+                userDonations.map((item) => {
+                  const isVerified = item.status_verifikasi === 'terverifikasi';
+                  const isRejected = item.status_verifikasi === 'ditolak';
+                  const nominalStr = Number(item.jumlah_nominal || 0).toLocaleString('id-ID');
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={`p-3.5 rounded-xl border transition-all ${
+                        isVerified
+                          ? 'bg-emerald-50/40 border-emerald-200'
+                          : isRejected
+                          ? 'bg-rose-50/50 border-rose-200'
+                          : 'bg-amber-50/30 border-amber-200'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-bold text-slate-900">
+                            {item.nama_panti || 'Panti Asuhan Binaan Dinsos'}
+                          </p>
+                          <p className="text-sm font-extrabold text-blue-900">
+                            {item.jenis_donasi === 'uang'
+                              ? `Rp ${nominalStr}`
+                              : `${item.nama_barang || 'Donasi Barang'} (${item.jumlah_barang || 1} unit)`}
+                          </p>
+                        </div>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
+                            isVerified
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                              : isRejected
+                              ? 'bg-rose-100 text-rose-800 border-rose-200'
+                              : 'bg-amber-100 text-amber-800 border-amber-200'
+                          }`}
+                        >
+                          {isVerified ? 'Berhasil' : isRejected ? 'Ditolak' : 'Menunggu Verifikasi'}
+                        </span>
+                      </div>
+
+                      {/* Notifikasi alasan jika donasi ditolak admin/dinsos */}
+                      {isRejected && (
+                        <div className="mt-2 p-2 rounded-lg bg-rose-100/70 border border-rose-200 text-rose-900 text-[11px] font-medium flex items-center gap-1.5">
+                          <AlertCircle size={14} className="text-rose-600 shrink-0" />
+                          <span>
+                            {item.catatan_admin || 'Donasi ditolak karena data bukti transfer tidak sesuai dengan nominal yang diajukan.'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsDonationHistoryOpen(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl transition"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

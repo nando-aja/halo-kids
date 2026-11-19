@@ -262,6 +262,7 @@ export const authService = {
     password,
     no_hp,
     role = 'masyarakat',
+    jenis_panti = null,
   }) {
     const payload = {
       nama: nama.trim(),
@@ -269,6 +270,7 @@ export const authService = {
       password,
       no_hp: no_hp ? no_hp.trim() : null,
       role,
+      jenis_panti: jenis_panti || null,
     };
 
     const response = await apiClient.post(

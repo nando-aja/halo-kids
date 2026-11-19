@@ -144,6 +144,7 @@ def build_application_response(
         "kontak": application.kontak,
         "email_lembaga": application.email_lembaga,
         "jumlah_anak_asuh": application.jumlah_anak_asuh,
+        "jenis_panti": getattr(application, "jenis_panti", None) or "Panti Asuhan Anak",
         "deskripsi": application.deskripsi,
         "status_pengajuan": application.status_pengajuan,
         "catatan_admin": application.catatan_admin,
@@ -213,6 +214,7 @@ def create_lksa_application(
             if data.email_lembaga else None
         ),
         jumlah_anak_asuh=data.jumlah_anak_asuh,
+        jenis_panti=data.jenis_panti or "Panti Asuhan Anak",
         deskripsi=data.deskripsi,
         status_pengajuan="draft",
     )

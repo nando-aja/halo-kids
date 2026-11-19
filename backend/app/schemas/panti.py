@@ -7,6 +7,7 @@ class PantiBase(BaseModel):
     kontak: str | None = Field(default=None, max_length=50)
     status_akreditasi: str | None = Field(default=None, max_length=50)
     jumlah_anak_asuh: int | None = Field(default=None, ge=0)
+    jenis_panti: str | None = Field(default="Panti Asuhan Anak", max_length=50)
     id_admin_pengelola: int | None = None
 
 
@@ -20,6 +21,7 @@ class PantiUpdate(BaseModel):
     kontak: str | None = Field(default=None, max_length=50)
     status_akreditasi: str | None = Field(default=None, max_length=50)
     jumlah_anak_asuh: int | None = Field(default=None, ge=0)
+    jenis_panti: str | None = Field(default=None, max_length=50)
     id_admin_pengelola: int | None = None
 
 

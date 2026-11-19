@@ -91,6 +91,7 @@ export default function LoginModal({
   const [regName, setRegName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPhone, setRegPhone] = useState('');
+  const [regJenisPanti, setRegJenisPanti] = useState('Panti Asuhan Anak');
   const [regPassword, setRegPassword] = useState('');
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
@@ -195,6 +196,19 @@ export default function LoginModal({
         return;
       }
 
+      // Validasi penolakan akun panti oleh Dinas Sosial
+      if (
+        (userRole.includes('pengelola') || selectedRole === 'pengelola panti') &&
+        result.user?.lksaApplicationStatus === 'ditolak'
+      ) {
+        authService.logout();
+        const pName = result.user?.lksaApplication?.nama_panti || result.user?.pantiName || 'yang diajukan';
+        setLoginEmailError(
+          `Akun panti (${pName}) ditolak oleh dinsos karena berkas yang diajukan tidak sesuai dengan apa yang diminta`
+        );
+        return;
+      }
+
       if (onLoginSuccess) {
         onLoginSuccess(result.user);
       }
@@ -240,6 +254,15 @@ const handleRegisterSubmit = async (e) => {
     return;
   }
 
+  // Validasi nomor WhatsApp / HP (hanya angka dan tanda + di awal)
+  if (regPhone.trim()) {
+    const phoneRegex = /^\+?[0-9]{9,15}$/;
+    if (!phoneRegex.test(regPhone.trim())) {
+      setRegError('Nomor HP hanya boleh berisi angka (9-15 digit) dan boleh diawali tanda + (misal: +628123456789 atau 081234567890).');
+      return;
+    }
+  }
+
   // Validasi password.
   if (regPassword.length < 6) {
     setRegError('Kata sandi minimal 6 karakter.');
@@ -266,6 +289,7 @@ const handleRegisterSubmit = async (e) => {
       password: regPassword,
       no_hp: regPhone.trim() || null,
       role: targetRoleCode,
+      jenis_panti: selectedRole === 'pengelola panti' ? regJenisPanti : null,
     });
 
     setIsRegisterMode(false);
@@ -674,6 +698,26 @@ const handleRegisterSubmit = async (e) => {
                         </select>
                       </div>
 
+                      {/* Jenis Panti Asuhan / LKSA (Khusus Pengelola Panti) */}
+                      {selectedRole === 'pengelola panti' && (
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            Jenis Panti Asuhan / LKSA *
+                          </label>
+                          <select
+                            value={regJenisPanti}
+                            onChange={(e) => setRegJenisPanti(e.target.value)}
+                            className="w-full text-xs px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white font-medium text-slate-800"
+                          >
+                            <option value="Panti Asuhan Anak">Panti Asuhan Anak</option>
+                            <option value="Balita">Panti Balita</option>
+                            <option value="Remaja">Panti Remaja</option>
+                            <option value="Disabilitas">Panti Disabilitas</option>
+                            <option value="Jompo / Lansia">Panti Jompo / Lansia</option>
+                          </select>
+                        </div>
+                      )}
+
                       {/* Nama Lengkap */}
                       <div>
                         <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -724,9 +768,17 @@ const handleRegisterSubmit = async (e) => {
                         <div className="relative">
                           <input
                             type="tel"
-                            placeholder="Contoh: 081234567890"
+                            placeholder="Contoh: +6281234567890 atau 081234567890"
                             value={regPhone}
-                            onChange={(e) => setRegPhone(e.target.value)}
+                            onChange={(e) => {
+                              let val = e.target.value.replace(/[^\d+]/g, '');
+                              if (val.startsWith('+')) {
+                                val = '+' + val.slice(1).replace(/\+/g, '');
+                              } else {
+                                val = val.replace(/\+/g, '');
+                              }
+                              setRegPhone(val);
+                            }}
                             className="w-full text-xs pl-8 pr-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                           />
                           <Phone size={14} className="text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />

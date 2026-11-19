@@ -287,11 +287,16 @@ def update_donation_status(
                 wishlist.jumlah_terpenuhi + item.jumlah_barang,
             )
 
+    notif_msg = (
+        f"Donasi #{item.id} ditolak karena data bukti transfer tidak sesuai dengan nominal yang diajukan."
+        if new_status == "ditolak"
+        else f"Status donasi #{item.id} berubah menjadi {new_status}."
+    )
     create_notification(
         db,
         item.id_user,
         "Status Donasi",
-        f"Status donasi #{item.id} berubah menjadi {new_status}.",
+        notif_msg,
     )
 
     db.commit()

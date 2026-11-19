@@ -4,7 +4,8 @@ import {
   Shield,
   User,
   ChevronRight,
-  Building2
+  Building2,
+  HeartHandshake
 } from 'lucide-react';
 import NotificationDropdown from './NotificationDropdown';
 
@@ -56,12 +57,12 @@ export default function UserHeader({
           <Menu size={19} />
         </button>
 
-        {/* Mobile Brand Title (Muncul di layar kecil saat breadcrumb disembunyikan) */}
+        {/* Mobile Brand Title Seragam dengan Landing Page */}
         <div className="flex lg:hidden items-center gap-1.5 shrink-0">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-900 to-blue-600 text-white flex items-center justify-center shadow-xs">
-            <Shield size={16} />
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#0b1f5c] to-[#1d4ed8] text-white flex items-center justify-center shadow-xs">
+            <HeartHandshake size={16} />
           </div>
-          <span className="font-extrabold text-blue-950 text-sm tracking-tight">
+          <span className="font-extrabold text-[#0b1f5c] text-sm tracking-tight font-heading">
             HaloKids
           </span>
         </div>
@@ -118,14 +119,13 @@ export default function UserHeader({
           onNavigateTab={onNavigateTab}
         />
 
-        {/* Status Autentikasi / Profil Pengguna */}
+        {/* Status Autentikasi / Profil Pengguna (Tampilan Indikator Akun Statis Tanpa Tombol) */}
         {isLoggedIn ? (
           <div 
-            onClick={onOpenMobileSidebar}
-            className="flex items-center gap-1.5 cursor-pointer active:scale-95 transition-transform"
-            title="Klik untuk melihat menu / profil"
+            className="flex items-center gap-1.5 cursor-default select-none"
+            title={`Akun: ${currentUser?.name || 'Warga'}`}
           >
-            <div className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 sm:px-3 py-1 rounded-full text-xs font-bold text-blue-700 shadow-2xs transition-colors">
+            <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 px-2 sm:px-3 py-1 rounded-full text-xs font-bold text-blue-700 shadow-2xs">
               <div className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px]">
                 <User size={12} />
               </div>

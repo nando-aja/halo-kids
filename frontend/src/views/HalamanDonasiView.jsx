@@ -27,6 +27,7 @@ import confetti from 'canvas-confetti';
 import Footer from '../components/Footer';
 import donasiService from '../api/donasiService';
 import pantiService from '../api/pantiService';
+import statsService from '../api/statsService';
 
 export default function HalamanDonasiView({
   isLoggedIn,
@@ -79,6 +80,78 @@ const [qrisImageError, setQrisImageError] = useState(false);
   const [estimasiTanggal, setEstimasiTanggal] = useState('');
   const [catatanPengiriman, setCatatanPengiriman] = useState('');
   const [apiPantiList, setApiPantiList] = useState([]);
+  const [dynamicPantiGoodsList, setDynamicPantiGoodsList] = useState([]);
+  const [liveDonationStats, setLiveDonationStats] = useState({
+    totalNominal: 0,
+    totalPanti: 0,
+    totalDonasi: 0
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadDonationData() {
+      try {
+        const [statsRes, pantisRes] = await Promise.allSettled([
+          statsService.getPublicStatistics(),
+          pantiService.getPublicPantiList()
+        ]);
+
+        if (!isMounted) return;
+
+        if (statsRes.status === 'fulfilled' && statsRes.value) {
+          setLiveDonationStats({
+            totalNominal: Number(statsRes.value.total_nominal_donasi_uang || 0),
+            totalPanti: Number(statsRes.value.total_panti || 0),
+            totalDonasi: Number(statsRes.value.total_donasi || 0)
+          });
+        }
+
+        if (pantisRes.status === 'fulfilled' && Array.isArray(pantisRes.value)) {
+          // Hanya panti yang sudah disetujui Dinsos
+          const mapped = await Promise.all(
+            pantisRes.value.map(async (p) => {
+              let wishlists = [];
+              try {
+                const wRes = await pantiService.getPublicWishlist(p.id);
+                if (Array.isArray(wRes)) {
+                  wishlists = wRes.map((w) => ({
+                    id: w.id,
+                    name: w.nama_barang,
+                    urgent: (w.jumlah_kebutuhan - (w.jumlah_terpenuhi || 0)) > 5,
+                    target: `${w.jumlah_terpenuhi || 0}/${w.jumlah_kebutuhan} Unit`,
+                    remaining: Math.max(0, w.jumlah_kebutuhan - (w.jumlah_terpenuhi || 0))
+                  }));
+                }
+              } catch (e) {
+                console.warn(`Gagal memuat wishlist panti ${p.id}:`, e);
+              }
+
+              return {
+                id: p.id,
+                name: p.nama_panti,
+                address: p.alamat || 'Kabupaten Bogor',
+                phone: p.kontak || '-',
+                anakCount: `${p.jumlah_anak_asuh || 0} Anak Asuh`,
+                items: wishlists
+              };
+            })
+          );
+
+          if (isMounted && mapped.length > 0) {
+            setDynamicPantiGoodsList(mapped);
+            setSelectedPantiPackage(mapped[0].name);
+          }
+        }
+      } catch (err) {
+        console.warn('Gagal memuat data donasi:', err);
+      }
+    }
+
+    loadDonationData();
+    return () => { isMounted = false; };
+  }, []);
+
+  const effectivePantiGoodsList = dynamicPantiGoodsList.length > 0 ? dynamicPantiGoodsList : pantiGoodsList;
 
   const pantiGoodsList = [
     {
@@ -450,9 +523,9 @@ const handleProofSubmit = async (e) => {
                 marginBottom: '3rem'
               }} className="grid-4">
                 {[
-                  { label: 'Total Donasi Terkumpul', val: 'Rp 485.500.000', icon: Wallet, color: '#1d4ed8' },
-                  { label: 'Anak Asuh Terbantu', val: '1.240 Anak', icon: Users, color: '#059669' },
-                  { label: 'Panti Penerima Rekomendasi', val: '28 LKSA Resmi', icon: Landmark, color: '#b45309' },
+                  { label: 'Total Donasi Terkumpul', val: `Rp ${liveDonationStats.totalNominal.toLocaleString('id-ID')}`, icon: Wallet, color: '#1d4ed8' },
+                  { label: 'Transaksi Donasi', val: `${liveDonationStats.totalDonasi} Transaksi`, icon: Users, color: '#059669' },
+                  { label: 'Panti Penerima Rekomendasi', val: `${liveDonationStats.totalPanti} LKSA Resmi`, icon: Landmark, color: '#b45309' },
                   { label: 'Audit Akuntabilitas', val: '100% Terverifikasi', icon: ShieldCheck, color: '#0284c7' }
                 ].map((stat, idx) => (
                   <div key={idx} style={{
@@ -706,7 +779,7 @@ const handleProofSubmit = async (e) => {
 
               {/* Grid of Orphanage Wishlists & Addresses */}
               <div className="panti-cards-grid" style={{ marginBottom: '3rem' }}>
-                {pantiGoodsList.map((panti) => (
+                {effectivePantiGoodsList.map((panti) => (
                   <div 
                     key={panti.id}
                     style={{
@@ -734,14 +807,20 @@ const handleProofSubmit = async (e) => {
                           KUMPULAN BARANG DIBUTUHKAN:
                         </span>
                         <ul style={{ paddingLeft: '1.1rem', margin: 0, fontSize: '0.8rem', color: '#334155', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                          {panti.items.map((it, idx) => (
-                            <li key={idx}>
-                              <strong>{it.name}</strong>{' '}
-                              <span style={{ color: it.urgent ? '#dc2626' : '#64748b', fontSize: '0.725rem', fontWeight: 700 }}>
-                                ({it.target} {it.urgent ? '• URGENT' : ''})
-                              </span>
+                          {panti.items && panti.items.length > 0 ? (
+                            panti.items.map((it, idx) => (
+                              <li key={idx}>
+                                <strong>{it.name}</strong>{' '}
+                                <span style={{ color: it.urgent ? '#dc2626' : '#64748b', fontSize: '0.725rem', fontWeight: 700 }}>
+                                  ({it.target} {it.urgent ? '• URGENT' : ''})
+                                </span>
+                              </li>
+                            ))
+                          ) : (
+                            <li style={{ color: '#64748b', fontStyle: 'italic', listStyleType: 'none', marginLeft: '-1.1rem' }}>
+                              Belum ada request barang spesifik. Panti menerima donasi sembako &amp; nutrisi anak.
                             </li>
-                          ))}
+                          )}
                         </ul>
                       </div>
 
@@ -856,7 +935,7 @@ const handleProofSubmit = async (e) => {
                           cursor: 'pointer'
                         }}
                       >
-                        {pantiGoodsList.map((p) => (
+                        {effectivePantiGoodsList.map((p) => (
                           <option key={p.id} value={p.name}>
                             {p.name} ({p.address.split(',')[1]?.trim() || p.address.split(',')[0]?.trim() || ''})
                           </option>

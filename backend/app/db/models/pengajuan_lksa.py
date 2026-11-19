@@ -85,6 +85,12 @@ class PengajuanLKSA(Base):
         nullable=True,
     )
 
+    jenis_panti = Column(
+        String(50),
+        nullable=True,
+        default="Panti Asuhan Anak",
+    )
+
     deskripsi = Column(
         Text,
         nullable=True,

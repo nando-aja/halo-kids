@@ -248,7 +248,7 @@ export default function Navbar({
               }}
             >
               <UserCheck size={16} color="#0b1f5c" />
-              Login User
+              Login
             </button>
           )}
 
@@ -325,7 +325,7 @@ export default function Navbar({
             </button>
           ) : (
             <button className="mobile-menu-item" onClick={() => { setMobileMenuOpen(false); onOpenLogin(); }}>
-              <UserCheck size={18} /> Login User
+              <UserCheck size={18} /> Login
             </button>
           )}
         </div>

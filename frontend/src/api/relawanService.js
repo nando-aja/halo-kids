@@ -30,6 +30,14 @@ export const relawanService = {
   },
 
   /**
+   * Mengambil daftar seluruh relawan yang terverifikasi / disetujui Dinsos
+   */
+  async getVerifiedVolunteers() {
+    const response = await apiClient.get('/api/public/relawan/verified');
+    return response.data;
+  },
+
+  /**
    * Mengambil seluruh pendaftar relawan untuk Admin Dinsos
    */
   async getAdminRelawan() {

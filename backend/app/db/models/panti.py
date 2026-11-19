@@ -43,6 +43,12 @@ class PantiAsuhan(Base):
         nullable=True
     )
 
+    jenis_panti = Column(
+        String(50),
+        nullable=True,
+        default="Panti Asuhan Anak"
+    )
+
     id_admin_pengelola = Column(
         Integer,
         ForeignKey("users.id"),

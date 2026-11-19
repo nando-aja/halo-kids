@@ -57,6 +57,11 @@ class PengajuanLKSACreate(BaseModel):
         ge=0,
     )
 
+    jenis_panti: str | None = Field(
+        default="Panti Asuhan Anak",
+        max_length=50,
+    )
+
     deskripsi: str | None = None
 
 
@@ -90,6 +95,11 @@ class PengajuanLKSAUpdate(BaseModel):
     jumlah_anak_asuh: int | None = Field(
         default=None,
         ge=0,
+    )
+
+    jenis_panti: str | None = Field(
+        default=None,
+        max_length=50,
     )
 
     deskripsi: str | None = None
@@ -140,6 +150,7 @@ class PengajuanLKSAResponse(BaseModel):
     kontak: str | None = None
     email_lembaga: str | None = None
     jumlah_anak_asuh: int | None = None
+    jenis_panti: str | None = None
     deskripsi: str | None = None
 
     status_pengajuan: str

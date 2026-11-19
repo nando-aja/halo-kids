@@ -561,14 +561,17 @@ def update_donation_status(
     # NOTIFIKASI WARGA
     # ==========================================
 
+    notif_msg = (
+        f"Donasi #{item.id} ditolak karena data bukti transfer tidak sesuai dengan nominal yang diajukan."
+        if new_status == "ditolak"
+        else f"Donasi #{item.id} telah berubah menjadi {new_status}."
+    )
+
     create_notification(
         db,
         item.id_user,
         "Status Donasi",
-        (
-            f"Donasi #{item.id} telah berubah "
-            f"menjadi {new_status}."
-        ),
+        notif_msg,
     )
 
 
@@ -1203,6 +1206,7 @@ def _build_lksa_admin_response(
         "kontak": item.kontak,
         "email_lembaga": item.email_lembaga,
         "jumlah_anak_asuh": item.jumlah_anak_asuh,
+        "jenis_panti": getattr(item, "jenis_panti", None) or "Panti Asuhan Anak",
         "deskripsi": item.deskripsi,
         "status_pengajuan": item.status_pengajuan,
         "catatan_admin": item.catatan_admin,
@@ -1540,6 +1544,7 @@ def update_lksa_application_status(
                     kontak=application.kontak,
                     status_akreditasi=None,
                     jumlah_anak_asuh=application.jumlah_anak_asuh,
+                    jenis_panti=getattr(application, "jenis_panti", None) or "Panti Asuhan Anak",
                     id_admin_pengelola=manager.id,
                 )
 
@@ -1571,6 +1576,7 @@ def update_lksa_application_status(
                 panti.alamat = application.alamat
                 panti.kontak = application.kontak
                 panti.jumlah_anak_asuh = application.jumlah_anak_asuh
+                panti.jenis_panti = getattr(application, "jenis_panti", None) or "Panti Asuhan Anak"
                 panti.id_admin_pengelola = manager.id
 
                 if is_old_placeholder:

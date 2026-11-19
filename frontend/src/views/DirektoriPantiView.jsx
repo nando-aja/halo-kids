@@ -64,7 +64,7 @@ useEffect(() => {
             id: p.id,
             name: p.nama_panti,
             category:
-              p.jumlah_anak_saat_ini <= 30 ? 'Balita' : 'Anak',
+              p.jenis_panti || (p.jumlah_anak_saat_ini <= 30 ? 'Balita' : 'Panti Asuhan Anak'),
             akreditasi: p.status_akreditasi
               ? `AKREDITASI ${p.status_akreditasi} KEMENSOS`
               : 'TERDAFTAR RESMI',
@@ -133,7 +133,10 @@ useEffect(() => {
     
     if (selectedCategory === 'Semua') return matchesSearch;
     if (selectedCategory === 'Akreditasi A') return matchesSearch && p.akreditasi.includes('AKREDITASI A');
-    return matchesSearch && p.category === selectedCategory;
+    if (selectedCategory === 'Jompo / Lansia') {
+      return matchesSearch && (p.category.toLowerCase().includes('jompo') || p.category.toLowerCase().includes('lansia'));
+    }
+    return matchesSearch && (p.category === selectedCategory || p.category.toLowerCase().includes(selectedCategory.toLowerCase()));
   });
 
   const handleCopyAddress = (panti) => {
@@ -223,7 +226,7 @@ useEffect(() => {
                 Kategori Panti:
               </span>
               <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                {['Semua', 'Balita', 'Anak', 'Remaja', 'Akreditasi A'].map((cat) => (
+                {['Semua', 'Panti Asuhan Anak', 'Balita', 'Remaja', 'Disabilitas', 'Jompo / Lansia', 'Akreditasi A'].map((cat) => (
                   <button
                     key={cat}
                     onClick={() => setSelectedCategory(cat)}

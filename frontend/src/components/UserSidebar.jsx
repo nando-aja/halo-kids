@@ -148,19 +148,19 @@ export default function UserSidebar({
             >
               <div
                 style={{
-                  background: 'linear-gradient(135deg, #1d4ed8 0%, #0284c7 100%)',
+                  background: 'linear-gradient(135deg, #0b1f5c 0%, #1d4ed8 100%)',
                   color: '#ffffff',
-                  width: '38px',
-                  height: '38px',
-                  borderRadius: '11px',
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '12px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  boxShadow: '0 4px 12px rgba(29, 78, 216, 0.4)',
+                  boxShadow: '0 4px 10px rgba(29, 78, 216, 0.4)',
                   flexShrink: 0
                 }}
               >
-                <Shield size={20} />
+                <HeartHandshake size={22} />
               </div>
 
               {!collapsed && (
@@ -169,10 +169,10 @@ export default function UserSidebar({
                     <span
                       style={{
                         fontFamily: 'var(--font-heading)',
-                        fontSize: '1.25rem',
+                        fontSize: '1.3rem',
                         fontWeight: '800',
                         color: '#ffffff',
-                        letterSpacing: '-0.02em',
+                        letterSpacing: '-0.03em',
                         whiteSpace: 'nowrap'
                       }}
                     >
@@ -180,16 +180,17 @@ export default function UserSidebar({
                     </span>
                     <span
                       style={{
-                        background: '#2563eb',
+                        background: '#1e40af',
                         color: '#ffffff',
-                        fontSize: '0.625rem',
+                        fontSize: '0.575rem',
                         fontWeight: '800',
                         padding: '0.12rem 0.45rem',
-                        borderRadius: '5px',
-                        letterSpacing: '0.04em'
+                        borderRadius: '6px',
+                        letterSpacing: '0.04em',
+                        whiteSpace: 'nowrap'
                       }}
                     >
-                      DINSOS
+                      LAYANAN SOSIAL TERPADU
                     </span>
                   </div>
                   <p
@@ -203,7 +204,7 @@ export default function UserSidebar({
                       overflow: 'hidden'
                     }}
                   >
-                    Portal Perlindungan Publik
+                    Pemerintah Kabupaten • Layanan Sosial Terpadu
                   </p>
                 </div>
               )}
@@ -653,7 +654,7 @@ export default function UserSidebar({
                   if (onOpenLogin) onOpenLogin();
                   setMobileOpen(false);
                 }}
-                title={collapsed ? 'Login User' : undefined}
+                title={collapsed ? 'Login' : undefined}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -673,7 +674,7 @@ export default function UserSidebar({
                 }}
               >
                 <UserCheck size={16} />
-                {!collapsed && <span>Login Portal User</span>}
+                {!collapsed && <span>Login</span>}
               </button>
 
               {!collapsed && onToggleLoginDemo && (

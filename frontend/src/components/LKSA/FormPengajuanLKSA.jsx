@@ -78,6 +78,7 @@ const INITIAL_FORM = {
   kontak: '',
   email_lembaga: '',
   jumlah_anak_asuh: '',
+  jenis_panti: 'Panti Asuhan Anak',
   deskripsi: '',
 };
 
@@ -178,6 +179,7 @@ export default function FormPengajuanLKSA({
           kontak: data.kontak || '',
           email_lembaga: data.email_lembaga || '',
           jumlah_anak_asuh: data.jumlah_anak_asuh ?? '',
+          jenis_panti: data.jenis_panti || 'Panti Asuhan Anak',
           deskripsi: data.deskripsi || '',
         });
       } catch (error) {
@@ -198,10 +200,21 @@ export default function FormPengajuanLKSA({
 
   function handleChange(event) {
     const { name, value } = event.target;
+    let finalValue = value;
+
+    if (name === 'kontak') {
+      let val = value.replace(/[^\d+]/g, '');
+      if (val.startsWith('+')) {
+        val = '+' + val.slice(1).replace(/\+/g, '');
+      } else {
+        val = val.replace(/\+/g, '');
+      }
+      finalValue = val;
+    }
 
     setForm((previous) => ({
       ...previous,
-      [name]: value,
+      [name]: finalValue,
     }));
   }
 
@@ -543,7 +556,7 @@ export default function FormPengajuanLKSA({
           </select>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium mb-1">
               Tahun Berdiri
@@ -571,6 +584,24 @@ export default function FormPengajuanLKSA({
               min="0"
               className="w-full border rounded-xl px-3 py-2.5"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              Jenis Panti / LKSA *
+            </label>
+            <select
+              name="jenis_panti"
+              value={form.jenis_panti || 'Panti Asuhan Anak'}
+              onChange={handleChange}
+              className="w-full border rounded-xl px-3 py-2.5 bg-white font-medium text-slate-800"
+            >
+              <option value="Panti Asuhan Anak">Panti Asuhan Anak</option>
+              <option value="Balita">Panti Balita</option>
+              <option value="Remaja">Panti Remaja</option>
+              <option value="Disabilitas">Panti Disabilitas</option>
+              <option value="Jompo / Lansia">Panti Jompo / Lansia</option>
+            </select>
           </div>
         </div>
 

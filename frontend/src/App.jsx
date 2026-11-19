@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
+import { ShieldAlert } from 'lucide-react';
 import LandingPage from './views/LandingPage';
 import LoadingSpinner from './components/common/LoadingSpinner';
 
@@ -69,6 +70,11 @@ const isLksaManager = (user) => {
 const canUseAdminDashboard = (user) => {
   const role = getAuthenticatedRole(user);
 
+  // Jika akun pengelola panti ditolak oleh Dinsos, blokir akses ke dashboard workspace
+  if (isLksaManager(user) && user?.lksaApplicationStatus === 'ditolak') {
+    return false;
+  }
+
   return (
     DINSOS_ROLES.includes(role) ||
     isLksaManager(user)
@@ -85,6 +91,9 @@ const getInitialViewMode = (user) => {
   }
 
   if (isLksaManager(user)) {
+    if (user?.lksaApplicationStatus === 'ditolak') {
+      return 'landing';
+    }
     return 'dashboard';
   }
 
@@ -127,6 +136,9 @@ const [viewMode, setViewMode] = useState(() => {
       return null;
     }
   });
+
+  // Notifikasi penolakan berkas akun panti oleh Dinas Sosial
+  const [rejectedPantiNotice, setRejectedPantiNotice] = useState(null);
 
   // Sesi ditangguhkan: pengguna menekan Back dari halaman akun ke halaman
   // sebelum login. Tampilan jadi seperti tamu, tapi sesi belum dihapus
@@ -355,7 +367,30 @@ const [viewMode, setViewMode] = useState(() => {
     };
   }, []);
 
+  useEffect(() => {
+    if (sessionUser && isLksaManager(sessionUser) && sessionUser.lksaApplicationStatus === 'ditolak') {
+      const pName = sessionUser?.lksaApplication?.nama_panti || sessionUser?.pantiName || 'yang diajukan';
+      endSession();
+      setRejectedPantiNotice(
+        `Akun panti (${pName}) ditolak oleh dinsos karena berkas yang diajukan tidak sesuai dengan apa yang diminta`
+      );
+      setViewMode('landing');
+      setActiveTab('beranda');
+    }
+  }, [sessionUser, endSession]);
+
   const handleLoginSuccess = (user) => {
+    if (user && isLksaManager(user) && user.lksaApplicationStatus === 'ditolak') {
+      const pName = user?.lksaApplication?.nama_panti || user?.pantiName || 'yang diajukan';
+      endSession();
+      setRejectedPantiNotice(
+        `Akun panti (${pName}) ditolak oleh dinsos karena berkas yang diajukan tidak sesuai dengan apa yang diminta`
+      );
+      setViewMode('landing');
+      setActiveTab('beranda');
+      return;
+    }
+
     setHasSession(true);
     setIsSessionSuspended(false);
     const loggedUser = user || { name: 'Warga', role: 'User Publik', email: 'warga@gmail.com' };
@@ -374,6 +409,17 @@ const [viewMode, setViewMode] = useState(() => {
   // Gabungkan data terbaru ke sesi (mis. status pengajuan LKSA berubah
   // setelah Dinsos memutuskan) dan simpan agar tetap ada setelah refresh.
   const handleUserUpdate = (patch) => {
+    if (sessionUser && isLksaManager(sessionUser) && patch.lksaApplicationStatus === 'ditolak') {
+      const pName = sessionUser?.lksaApplication?.nama_panti || sessionUser?.pantiName || 'yang diajukan';
+      endSession();
+      setRejectedPantiNotice(
+        `Akun panti (${pName}) ditolak oleh dinsos karena berkas yang diajukan tidak sesuai dengan apa yang diminta`
+      );
+      setViewMode('landing');
+      setActiveTab('beranda');
+      return;
+    }
+
     setSessionUser((prev) => {
       if (!prev) return prev;
       const next = { ...prev, ...patch };
@@ -676,6 +722,28 @@ const [viewMode, setViewMode] = useState(() => {
                 setActiveTab(tab);
               }}
             />
+
+            {/* Banner Penolakan Berkas Akun Panti oleh Dinas Sosial */}
+            {rejectedPantiNotice && (
+              <div className="mx-4 sm:mx-6 mt-3 p-3.5 bg-rose-50 border border-rose-200 text-rose-900 rounded-xl flex items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                    <ShieldAlert size={18} />
+                  </div>
+                  <p className="text-xs sm:text-sm font-semibold">
+                    {rejectedPantiNotice}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRejectedPantiNotice(null)}
+                  className="text-rose-500 hover:text-rose-700 p-1 text-sm font-bold shrink-0"
+                  aria-label="Tutup notifikasi"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
 
             {/* DYNAMIC USER VIEW DENGAN PADDING BOTTOM DI MOBILE UNTUK BOTTOM BAR */}
             <main className="flex-1 flex flex-col min-w-0 pb-16 lg:pb-0">

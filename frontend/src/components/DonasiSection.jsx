@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Heart, Landmark, QrCode, ShieldCheck, CheckCircle2, Gift, Users, Sparkles, ArrowRight, Wallet, DollarSign } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import statsService from '../api/statsService';
 
 export default function DonasiSection() {
   const [selectedNominal, setSelectedNominal] = useState(100000);
@@ -9,6 +10,31 @@ export default function DonasiSection() {
   const [paymentMethod, setPaymentMethod] = useState('qris');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [donorName, setDonorName] = useState('');
+  const [liveStats, setLiveStats] = useState({
+    totalNominal: 0,
+    totalPanti: 0,
+    totalDonasi: 0
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadStats() {
+      try {
+        const data = await statsService.getPublicStatistics();
+        if (isMounted && data) {
+          setLiveStats({
+            totalNominal: Number(data.total_nominal_donasi_uang || 0),
+            totalPanti: Number(data.total_panti || 0),
+            totalDonasi: Number(data.total_donasi || 0)
+          });
+        }
+      } catch (err) {
+        console.warn('Gagal memuat statistik donasi publik:', err);
+      }
+    }
+    loadStats();
+    return () => { isMounted = false; };
+  }, []);
 
   const categories = [
     {
@@ -92,9 +118,9 @@ export default function DonasiSection() {
           marginBottom: '3rem'
         }} className="grid-4">
           {[
-            { label: 'Total Donasi Terkumpul', val: 'Rp 485.500.000', icon: Wallet, color: '#1d4ed8' },
-            { label: 'Anak Asuh Terbantu', val: '1.240 Anak', icon: Users, color: '#059669' },
-            { label: 'Panti Asuhan Penerima', val: '28 LKSA Resmi', icon: Landmark, color: '#b45309' },
+            { label: 'Total Donasi Terkumpul', val: `Rp ${liveStats.totalNominal.toLocaleString('id-ID')}`, icon: Wallet, color: '#1d4ed8' },
+            { label: 'Transaksi Donasi', val: `${liveStats.totalDonasi} Transaksi`, icon: Users, color: '#059669' },
+            { label: 'Panti Asuhan Penerima', val: `${liveStats.totalPanti} LKSA Resmi`, icon: Landmark, color: '#b45309' },
             { label: 'Transparansi Audit', val: '100% Diaudit', icon: ShieldCheck, color: '#0284c7' }
           ].map((stat, i) => (
             <div key={i} style={{
