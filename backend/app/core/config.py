@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     SUPABASE_PRIVATE_BUCKET: str = "halokids-private"
     SUPABASE_PUBLIC_BUCKET: str = "halokids-public"
 
+    # HANYA untuk development/tes di laptop. Default False = perilaku asli:
+    # jika Supabase belum dikonfigurasi, upload ditolak (503) sehingga file
+    # tidak pernah "tampak berhasil" padahal hanya tersimpan di disk sementara.
+    # JANGAN diaktifkan di Render/production.
+    ALLOW_LOCAL_STORAGE: bool = False
+
     # Koneksi database (hanya dipakai untuk MySQL/TiDB).
     # TiDB Cloud menutup koneksi yang menganggur, jadi koneksi di pool
     # harus dicek/didaur ulang sebelum dipakai agar request pertama

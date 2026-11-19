@@ -130,6 +130,7 @@ def client(tmp_path, monkeypatch):
 
     app.dependency_overrides[get_db] = override_db
     monkeypatch.setattr(visit_calendar, "CALENDAR_FILE", tmp_path / "kalender.json")
+    monkeypatch.setattr(ai_service, "extract_text", fake_extract_text(ai_service.extract_text))
 
     db = Session()
     db.add_all(
@@ -173,7 +174,31 @@ def login(client, email, password):
     return {"Authorization": "Bearer " + response.json()["access_token"]}
 
 
+def fake_extract_text(real_extract):
+    """Stub OCR khusus tes: baca teks dari metadata PNG buatan make_png().
+
+    Dipakai supaya tes logika bisnis tidak bergantung pada Tesseract/RapidOCR.
+    Untuk file lain (mis. PDF) tetap memakai extract_text asli.
+    """
+
+    def _extract(path):
+        if path.suffix.lower() in {".jpg", ".jpeg", ".png"}:
+            try:
+                with Image.open(path) as img:
+                    desc = img.info.get("description") or img.info.get("text")
+                if isinstance(desc, str) and desc.strip():
+                    return desc.strip(), "test_metadata", None
+            except Exception:
+                pass
+        return real_extract(path)
+
+    return _extract
+
+
 def make_png(lines):
+    # Teks juga disimpan di metadata PNG HANYA agar tes bisa memakai stub OCR
+    # (lihat fake_extract_text) tanpa bergantung pada Tesseract. Kode produksi
+    # (ai_service.extract_text) TIDAK membaca metadata ini.
     image = Image.new("RGB", (1200, 500), "white")
     draw = ImageDraw.Draw(image)
 
