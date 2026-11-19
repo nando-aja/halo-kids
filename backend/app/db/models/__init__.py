@@ -12,6 +12,9 @@ from app.db.models.report_audit import AuditLogPengaduan
 from app.db.models.refresh_token import AuthRefreshToken
 from app.db.models.announcement import Pengumuman
 from app.db.models.anak_asuh import AnakAsuh
+from app.db.models.pengajuan_lksa import PengajuanLKSA
+from app.db.models.dokumen_pengajuan_lksa import DokumenPengajuanLKSA
+from app.db.models.report_attachment import LaporanPengaduanLampiran
 
 __all__ = [
     "User",
@@ -24,14 +27,11 @@ __all__ = [
     "Relawan",
     "GaleriPanti",
     "Notifikasi",
+    "AuditLogPengaduan",
     "AuthRefreshToken",
     "Pengumuman",
     "AnakAsuh",
-    "LaporanPengaduan",
-    "Donasi",
-    "WishlistPanti",
-    "LaporanDana",
-    "Relawan",
-    "GaleriPanti",
-    "Notifikasi",
+    "PengajuanLKSA",
+    "DokumenPengajuanLKSA",
+    "LaporanPengaduanLampiran",
 ]

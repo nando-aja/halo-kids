@@ -107,7 +107,18 @@ def get_users(
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    return db.query(User).order_by(User.id.desc()).all()
+    # Hilangkan akun panti yang pengajuannya telah ditolak Dinsos
+    rejected_manager_ids = (
+        db.query(PengajuanLKSA.id_pengelola)
+        .filter(PengajuanLKSA.status_pengajuan == "ditolak")
+        .subquery()
+    )
+    return (
+        db.query(User)
+        .filter(~User.id.in_(rejected_manager_ids))
+        .order_by(User.id.desc())
+        .all()
+    )
 
 
 @router.patch(
@@ -1626,6 +1637,39 @@ def update_lksa_application_status(
                 ),
                 "panti_baru",
                 panti_id=application.id_panti,
+                creator_id=current_user.id,
+            )
+        elif data.status_pengajuan == "ditolak":
+            # Hapus data panti jika ada agar langsung dihilangkan dari tampilan publik
+            if application.id_panti is not None:
+                panti_to_del = (
+                    db.query(PantiAsuhan)
+                    .filter(PantiAsuhan.id == application.id_panti)
+                    .first()
+                )
+                if panti_to_del:
+                    db.delete(panti_to_del)
+                application.id_panti = None
+            else:
+                panti_to_del = (
+                    db.query(PantiAsuhan)
+                    .filter(PantiAsuhan.id_admin_pengelola == manager.id)
+                    .first()
+                )
+                if panti_to_del:
+                    db.delete(panti_to_del)
+
+            # Notifikasi pengumuman di landing page bahwa panti ditolak
+            reject_msg = (
+                f"Akun panti ({application.nama_panti}) ditolak oleh dinsos "
+                "karena berkas yang diajukan tidak sesuai dengan apa yang diminta"
+            )
+            create_announcement(
+                db,
+                "Status Pengajuan Panti",
+                reject_msg,
+                "panti_ditolak",
+                panti_id=None,
                 creator_id=current_user.id,
             )
 

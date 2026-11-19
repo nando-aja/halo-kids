@@ -64,7 +64,7 @@ useEffect(() => {
             id: p.id,
             name: p.nama_panti,
             category:
-              p.jenis_panti || (p.jumlah_anak_saat_ini <= 30 ? 'Balita' : 'Panti Asuhan Anak'),
+              p.jenis_panti || ((p.jumlah_anak_asuh || p.jumlah_anak_saat_ini || 0) <= 30 ? 'Balita' : 'Panti Asuhan Anak'),
             akreditasi: p.status_akreditasi
               ? `AKREDITASI ${p.status_akreditasi} KEMENSOS`
               : 'TERDAFTAR RESMI',
@@ -77,12 +77,12 @@ useEffect(() => {
               : '-',
             location: p.alamat || 'Alamat belum tersedia',
             address: p.alamat || 'Alamat belum tersedia',
-            anakCount: `${p.jumlah_anak_saat_ini || 0} Anak`,
+            anakCount: `${p.jumlah_anak_asuh || p.jumlah_anak_saat_ini || 0} Anak`,
             usia: '0 - 18 Thn',
             highlight: p.deskripsi
               ? p.deskripsi.slice(0, 60)
               : 'Lembaga terdaftar',
-            phone: p.nomor_kontak || '-',
+            phone: p.kontak || p.nomor_kontak || '-',
             pengurus: 'Pengurus LKSA',
             bank: p.rekening_bank
               ? `${p.nama_bank || 'Bank'}: ${p.rekening_bank} a.n ${

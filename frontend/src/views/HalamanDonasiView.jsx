@@ -137,9 +137,11 @@ const [qrisImageError, setQrisImageError] = useState(false);
             })
           );
 
-          if (isMounted && mapped.length > 0) {
+          if (isMounted) {
             setDynamicPantiGoodsList(mapped);
-            setSelectedPantiPackage(mapped[0].name);
+            if (mapped.length > 0) {
+              setSelectedPantiPackage(mapped[0].name);
+            }
           }
         }
       } catch (err) {
@@ -151,49 +153,7 @@ const [qrisImageError, setQrisImageError] = useState(false);
     return () => { isMounted = false; };
   }, []);
 
-  const effectivePantiGoodsList = dynamicPantiGoodsList.length > 0 ? dynamicPantiGoodsList : pantiGoodsList;
-
-  const pantiGoodsList = [
-    {
-      id: 'panti-1',
-      name: 'LKSA Kasih Bunda Mandiri',
-      address: 'Jl. Raya Cibinong No. 45, RT 02/RW 05, Kec. Cibinong, Kab. Bogor 16911',
-      phone: '0812-9988-7711 (Ibu Siti)',
-      anakCount: '42 Anak Asuh',
-      items: [
-        { name: 'Sembako (Beras 10kg & Minyak)', urgent: true, target: '20 Paket' },
-        { name: 'Seragam Sekolah SD/SMP', urgent: true, target: '15 Set' },
-        { name: 'Buku Tulis & Alat Sekolah', urgent: false, target: '40 Paket' },
-        { name: 'Sepatu Sekolah Hitam (Ukuran 34-40)', urgent: false, target: '10 Pasang' }
-      ]
-    },
-    {
-      id: 'panti-2',
-      name: 'Panti Asuhan Balita Tunas Bangsa',
-      address: 'Jl. Pemda Tegar Beriman No. 12, Kel. Pakansari, Kec. Cibinong 16915',
-      phone: '0813-8822-4400 (Ns. Ratna)',
-      anakCount: '26 Balita (0-4 Thn)',
-      items: [
-        { name: 'Susu Formula SGM 0-12 Bln (400g)', urgent: true, target: '30 Kaleng' },
-        { name: 'Popok Bayi M & L', urgent: true, target: '25 Pax' },
-        { name: 'Minyak Telon & Sabun Mandi Balita', urgent: false, target: '15 Botol' },
-        { name: 'Kasur Busa Bayi / Perlak', urgent: false, target: '5 Unit' }
-      ]
-    },
-    {
-      id: 'panti-3',
-      name: 'LKSA Bina Harapan Ciawi',
-      address: 'Jl. Raya Puncak Ciawi No. 88, RT 01/RW 03, Kec. Ciawi, Kab. Bogor 16720',
-      phone: '0857-1133-5599 (Pak Rizky)',
-      anakCount: '38 Remaja',
-      items: [
-        { name: 'Komputer / Laptop Bekas Layak Pakai', urgent: true, target: '5 Unit' },
-        { name: 'Bahan Pelatihan Tata Boga (Tepung/Mentega)', urgent: true, target: '10 Paket' },
-        { name: 'Perlengkapan Kebersihan Panti', urgent: false, target: '15 Set' },
-        { name: 'Buku Komputer & Otomotif', urgent: false, target: '20 Buah' }
-      ]
-    }
-  ];
+  const effectivePantiGoodsList = dynamicPantiGoodsList;
 
   const nominalOptions = [50000, 100000, 250000, 500000, 1000000];
 
@@ -410,10 +370,13 @@ const handleProofSubmit = async (e) => {
       alert('Pilih minimal 1 jenis barang yang akan Anda kirimkan.');
       return;
     }
+    const targetPanti = effectivePantiGoodsList.find((p) => p.name === selectedPantiPackage) || effectivePantiGoodsList[0];
+    const targetPantiId = targetPanti?.id ? Number(targetPanti.id) : 1;
+
     setIsSubmitting(true);
     try {
       await donasiService.createDonasi({
-        id_panti: 1,
+        id_panti: targetPantiId,
         jenis_donasi: 'barang',
         nama_barang: selectedItems.join(', '),
         jumlah_barang: 1,
@@ -778,102 +741,121 @@ const handleProofSubmit = async (e) => {
               </div>
 
               {/* Grid of Orphanage Wishlists & Addresses */}
-              <div className="panti-cards-grid" style={{ marginBottom: '3rem' }}>
-                {effectivePantiGoodsList.map((panti) => (
-                  <div 
-                    key={panti.id}
-                    style={{
-                      background: '#ffffff',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: 'var(--radius-lg)',
-                      padding: '1.5rem',
-                      boxShadow: 'var(--shadow-md)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between'
-                    }}
-                  >
-                    <div>
-                      <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0b1f5c', margin: '0 0 0.5rem 0' }}>
-                        {panti.name}
-                      </h3>
-                      <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 700, display: 'block', marginBottom: '0.85rem' }}>
-                        Kapasitas: {panti.anakCount}
-                      </span>
-
-                      {/* Item Wishlist Checklist */}
-                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '0.85rem', borderRadius: '10px', marginBottom: '1rem' }}>
-                        <span style={{ fontSize: '0.725rem', fontWeight: 800, color: '#0b1f5c', textTransform: 'uppercase', letterSpacing: '0.03em', display: 'block', marginBottom: '0.5rem' }}>
-                          KUMPULAN BARANG DIBUTUHKAN:
-                        </span>
-                        <ul style={{ paddingLeft: '1.1rem', margin: 0, fontSize: '0.8rem', color: '#334155', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                          {panti.items && panti.items.length > 0 ? (
-                            panti.items.map((it, idx) => (
-                              <li key={idx}>
-                                <strong>{it.name}</strong>{' '}
-                                <span style={{ color: it.urgent ? '#dc2626' : '#64748b', fontSize: '0.725rem', fontWeight: 700 }}>
-                                  ({it.target} {it.urgent ? '• URGENT' : ''})
-                                </span>
-                              </li>
-                            ))
-                          ) : (
-                            <li style={{ color: '#64748b', fontStyle: 'italic', listStyleType: 'none', marginLeft: '-1.1rem' }}>
-                              Belum ada request barang spesifik. Panti menerima donasi sembako &amp; nutrisi anak.
-                            </li>
-                          )}
-                        </ul>
-                      </div>
-
-                      {/* Address & Copy Action Box */}
-                      <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', padding: '0.85rem', borderRadius: '10px', marginBottom: '1rem' }}>
-                        <span style={{ fontSize: '0.7rem', color: '#1d4ed8', fontWeight: 800, textTransform: 'uppercase', display: 'block', marginBottom: '0.25rem' }}>
-                          ALAMAT PENERIMA PENGIRIMAN PAKET:
-                        </span>
-                        <p style={{ fontSize: '0.775rem', color: '#1e293b', margin: '0 0 0.5rem 0', lineHeight: 1.4 }}>
-                          {panti.address}
-                        </p>
-                        <span style={{ fontSize: '0.725rem', color: '#475569', display: 'block', marginBottom: '0.5rem' }}>
-                          Kontak Panti: <strong>{panti.phone}</strong>
-                        </span>
-
-                        <button
-                          onClick={() => handleCopyAddress(panti)}
-                          style={{
-                            width: '100%',
-                            background: '#ffffff',
-                            border: '1px solid #93c5fd',
-                            color: '#1d4ed8',
-                            padding: '0.45rem',
-                            borderRadius: '6px',
-                            fontSize: '0.775rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '0.35rem'
-                          }}
-                        >
-                          <Copy size={14} /> {copiedPantiId === panti.id ? '✔ Alamat & Kontak Tersalin!' : 'Salin Alamat Lengkap Paket'}
-                        </button>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        setSelectedPantiPackage(panti.name);
-                        const el = document.getElementById('form-paket');
-                        if (el) el.scrollIntoView({ behavior: 'smooth' });
+              {effectivePantiGoodsList.length > 0 ? (
+                <div className="panti-cards-grid" style={{ marginBottom: '3rem' }}>
+                  {effectivePantiGoodsList.map((panti) => (
+                    <div 
+                      key={panti.id}
+                      style={{
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: 'var(--radius-lg)',
+                        padding: '1.5rem',
+                        boxShadow: 'var(--shadow-md)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between'
                       }}
-                      className="btn btn-primary"
-                      style={{ width: '100%', borderRadius: '8px', fontSize: '0.825rem', padding: '0.6rem' }}
                     >
-                      <Truck size={16} /> Pilih Panti Ini untuk Kirim Paket ↓
-                    </button>
+                      <div>
+                        <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0b1f5c', margin: '0 0 0.5rem 0' }}>
+                          {panti.name}
+                        </h3>
+                        <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 700, display: 'block', marginBottom: '0.85rem' }}>
+                          Kapasitas: {panti.anakCount}
+                        </span>
 
-                  </div>
-                ))}
-              </div>
+                        {/* Item Wishlist Checklist */}
+                        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '0.85rem', borderRadius: '10px', marginBottom: '1rem' }}>
+                          <span style={{ fontSize: '0.725rem', fontWeight: 800, color: '#0b1f5c', textTransform: 'uppercase', letterSpacing: '0.03em', display: 'block', marginBottom: '0.5rem' }}>
+                            KUMPULAN BARANG DIBUTUHKAN:
+                          </span>
+                          <ul style={{ paddingLeft: '1.1rem', margin: 0, fontSize: '0.8rem', color: '#334155', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                            {panti.items && panti.items.length > 0 ? (
+                              panti.items.map((it, idx) => (
+                                <li key={idx}>
+                                  <strong>{it.name}</strong>{' '}
+                                  <span style={{ color: it.urgent ? '#dc2626' : '#64748b', fontSize: '0.725rem', fontWeight: 700 }}>
+                                    ({it.target} {it.urgent ? '• URGENT' : ''})
+                                  </span>
+                                </li>
+                              ))
+                            ) : (
+                              <li style={{ color: '#64748b', fontStyle: 'italic', listStyleType: 'none', marginLeft: '-1.1rem' }}>
+                                Belum ada request barang spesifik. Panti menerima donasi sembako &amp; nutrisi anak.
+                              </li>
+                            )}
+                          </ul>
+                        </div>
+
+                        {/* Address & Copy Action Box */}
+                        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', padding: '0.85rem', borderRadius: '10px', marginBottom: '1rem' }}>
+                          <span style={{ fontSize: '0.7rem', color: '#1d4ed8', fontWeight: 800, textTransform: 'uppercase', display: 'block', marginBottom: '0.25rem' }}>
+                            ALAMAT PENERIMA PENGIRIMAN PAKET:
+                          </span>
+                          <p style={{ fontSize: '0.775rem', color: '#1e293b', margin: '0 0 0.5rem 0', lineHeight: 1.4 }}>
+                            {panti.address}
+                          </p>
+                          <span style={{ fontSize: '0.725rem', color: '#475569', display: 'block', marginBottom: '0.5rem' }}>
+                            Kontak Panti: <strong>{panti.phone}</strong>
+                          </span>
+
+                          <button
+                            onClick={() => handleCopyAddress(panti)}
+                            style={{
+                              width: '100%',
+                              background: '#ffffff',
+                              border: '1px solid #93c5fd',
+                              color: '#1d4ed8',
+                              padding: '0.45rem',
+                              borderRadius: '6px',
+                              fontSize: '0.775rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '0.35rem'
+                            }}
+                          >
+                            <Copy size={14} /> {copiedPantiId === panti.id ? '✔ Alamat & Kontak Tersalin!' : 'Salin Alamat Lengkap Paket'}
+                          </button>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          setSelectedPantiPackage(panti.name);
+                          const el = document.getElementById('form-paket');
+                          if (el) el.scrollIntoView({ behavior: 'smooth' });
+                        }}
+                        className="btn btn-primary"
+                        style={{ width: '100%', borderRadius: '8px', fontSize: '0.825rem', padding: '0.6rem' }}
+                      >
+                        <Truck size={16} /> Pilih Panti Ini untuk Kirim Paket ↓
+                      </button>
+
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: 'var(--radius-lg)',
+                  padding: '3rem 1.5rem',
+                  textAlign: 'center',
+                  marginBottom: '3rem'
+                }}>
+                  <Package size={42} color="#94a3b8" style={{ margin: '0 auto 1rem auto' }} />
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#334155', margin: '0 0 0.5rem 0' }}>
+                    Belum Ada Data Kebutuhan Barang Panti
+                  </h3>
+                  <p style={{ fontSize: '0.875rem', color: '#64748b', margin: 0 }}>
+                    Hanya LKSA / Panti Asuhan resmi yang disetujui Dinsos dan memiliki permohonan logistik aktif yang ditampilkan.
+                  </p>
+                </div>
+              )}
 
               {/* Package Confirmation Form */}
               <div id="form-paket" style={{ width: '100%', maxWidth: '1000px', margin: '0 auto' }}>

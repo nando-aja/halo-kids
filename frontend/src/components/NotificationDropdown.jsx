@@ -48,6 +48,7 @@ const PERSONAL_UI = {
 
 const ANNOUNCEMENT_UI = {
   panti_baru: { icon: Building2, color: '#047857', bg: '#ecfdf5', label: 'Panti baru' },
+  panti_ditolak: { icon: ShieldAlert, color: '#dc2626', bg: '#fef2f2', label: 'Panti Ditolak' },
   pembaruan: { icon: Sparkles, color: '#7c3aed', bg: '#f5f3ff', label: 'Pembaruan' },
   pengumuman: { icon: Megaphone, color: '#b45309', bg: '#fffbeb', label: 'Pengumuman' },
 };

@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import relawanService from '../api/relawanService';
 import donasiService from '../api/donasiService';
+import adopsiService from '../api/adopsiService';
+import pengaduanService from '../api/pengaduanService';
 
 /**
  * Dashboard Personal Warga
@@ -45,6 +47,9 @@ export default function DashboardPersonalWarga({
   const [userDonations, setUserDonations] = useState([]);
   const [totalNominalVerified, setTotalNominalVerified] = useState(0);
   const [verifiedDonationCount, setVerifiedDonationCount] = useState(0);
+
+  const [userAdoptions, setUserAdoptions] = useState([]);
+  const [userReports, setUserReports] = useState([]);
 
   // Nama Pengguna Dinamis
   const userName = currentUser?.name?.trim() ? currentUser.name : 'Warga';
@@ -89,6 +94,25 @@ export default function DashboardPersonalWarga({
       } catch (err) {
         console.warn('Gagal memuat data relawan:', err);
       }
+
+      // 3. Muat status adopsi COTA & laporan pengaduan nyata milik user
+      try {
+        const [adoptionsRes, reportsRes] = await Promise.allSettled([
+          adopsiService.getMyAdoptions(),
+          pengaduanService.getMyPengaduan()
+        ]);
+
+        if (isMounted) {
+          if (adoptionsRes.status === 'fulfilled' && Array.isArray(adoptionsRes.value)) {
+            setUserAdoptions(adoptionsRes.value);
+          }
+          if (reportsRes.status === 'fulfilled' && Array.isArray(reportsRes.value)) {
+            setUserReports(reportsRes.value);
+          }
+        }
+      } catch (err) {
+        console.warn('Gagal memuat data adopsi/pengaduan:', err);
+      }
     }
 
     loadUserData();
@@ -100,28 +124,36 @@ export default function DashboardPersonalWarga({
     {
       id: 'cota',
       title: 'Status Pengajuan Adopsi (COTA)',
-      value: '1 Berkas Diproses',
-      badgeText: 'Tahap Verifikasi PIPA',
-      badgeColor: 'bg-blue-100 text-blue-700 border-blue-200',
-      badgeDot: 'bg-blue-600',
+      value: userAdoptions.length > 0 
+        ? `${userAdoptions.length} Berkas Diajukan` 
+        : 'Belum Ada Pengajuan',
+      badgeText: userAdoptions.length > 0 
+        ? (userAdoptions[0].status ? `Status: ${userAdoptions[0].status.replace(/_/g, ' ')}` : 'Diproses') 
+        : 'Belum Ada Berkas',
+      badgeColor: userAdoptions.length > 0 ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-slate-100 text-slate-700 border-slate-200',
+      badgeDot: userAdoptions.length > 0 ? 'bg-blue-600' : 'bg-slate-400',
       icon: UserCheck,
-      iconBg: 'bg-blue-50 text-blue-600 border-blue-200',
+      iconBg: userAdoptions.length > 0 ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-slate-50 text-slate-600 border-slate-200',
       accentBorder: 'hover:border-blue-300',
-      action: () => setIsCotaTrackingOpen(true),
-      actionLabel: 'Lihat Pengajuan'
+      action: userAdoptions.length > 0 ? () => setIsCotaTrackingOpen(true) : onSwitchToAdopsi,
+      actionLabel: userAdoptions.length > 0 ? 'Lihat Pengajuan' : 'Ajukan Adopsi'
     },
     {
       id: 'pengaduan',
       title: 'Laporan Pengaduan Aktif',
-      value: '1 Kasus Sedang Ditangani',
-      badgeText: 'Investigasi TRC',
-      badgeColor: 'bg-amber-100 text-amber-800 border-amber-200',
-      badgeDot: 'bg-amber-500',
+      value: userReports.length > 0 
+        ? `${userReports.length} Laporan Diajukan` 
+        : 'Belum Ada Laporan',
+      badgeText: userReports.length > 0 
+        ? (userReports[0].status ? `Status: ${userReports[0].status.replace(/_/g, ' ')}` : 'Diproses') 
+        : 'Aman & Terkendali',
+      badgeColor: userReports.length > 0 ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-slate-100 text-slate-700 border-slate-200',
+      badgeDot: userReports.length > 0 ? 'bg-amber-500' : 'bg-slate-400',
       icon: ShieldAlert,
-      iconBg: 'bg-amber-50 text-amber-600 border-amber-200',
+      iconBg: userReports.length > 0 ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200',
       accentBorder: 'hover:border-amber-300',
-      action: onOpenLacak,
-      actionLabel: 'Lacak Kasus'
+      action: userReports.length > 0 ? onOpenLacak : (onOpenLapor || onSwitchToPengaduan),
+      actionLabel: userReports.length > 0 ? 'Lacak Kasus' : 'Buat Laporan'
     },
     {
       id: 'relawan',

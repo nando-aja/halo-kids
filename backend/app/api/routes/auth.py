@@ -201,6 +201,25 @@ def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Cegah login akun pengelola LKSA yang pengajuannya telah ditolak Dinsos
+    if user.peran == "pengelola-panti":
+        rejected_app = (
+            db.query(PengajuanLKSA)
+            .filter(
+                PengajuanLKSA.id_pengelola == user.id,
+                PengajuanLKSA.status_pengajuan == "ditolak",
+            )
+            .first()
+        )
+        if rejected_app:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    f"Akun panti ({rejected_app.nama_panti}) ditolak oleh dinsos "
+                    "karena berkas yang diajukan tidak sesuai dengan apa yang diminta."
+                ),
+            )
+
     access_token = create_access_token(
         data={
             "sub": str(user.id),

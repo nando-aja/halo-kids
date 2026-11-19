@@ -37,9 +37,9 @@ export default function OrphanageDirectory({
           id: p.id,
           name: p.nama_panti,
           category:
-            Number(p.jumlah_anak_saat_ini || 0) <= 30
+            p.jenis_panti || (Number(p.jumlah_anak_asuh || p.jumlah_anak_saat_ini || 0) <= 30
               ? 'Balita'
-              : 'Anak',
+              : 'Panti Asuhan Anak'),
           akreditasi: p.status_akreditasi
             ? `AKREDITASI ${p.status_akreditasi} KEMENSOS`
             : 'TERDAFTAR RESMI',
@@ -48,12 +48,12 @@ export default function OrphanageDirectory({
             p.foto_panti ||
             (idx % 2 === 0 ? '/lksa1.jpg' : '/lksa2.jpg'),
           location: p.alamat || 'Alamat belum tersedia',
-          anakCount: `${p.jumlah_anak_saat_ini || 0} Anak`,
+          anakCount: `${p.jumlah_anak_asuh || p.jumlah_anak_saat_ini || 0} Anak`,
           usia: '0 - 18 Thn',
           highlight: p.deskripsi
             ? p.deskripsi.slice(0, 50)
             : 'Lembaga terdaftar resmi',
-          phone: p.nomor_kontak || '-',
+          phone: p.kontak || p.nomor_kontak || '-',
           address: p.alamat || 'Alamat belum tersedia',
           bank: p.rekening_bank
             ? `${p.nama_bank || 'Bank'}: ${p.rekening_bank}`
@@ -93,9 +93,25 @@ export default function OrphanageDirectory({
   const filteredPanti =
     activeCategory === 'Semua'
       ? dynamicPantiList
-      : dynamicPantiList.filter(
-          (panti) => panti.category === activeCategory
-        );
+      : dynamicPantiList.filter((panti) => {
+          if (activeCategory === 'Jompo / Lansia') {
+            return (
+              panti.category?.toLowerCase().includes('jompo') ||
+              panti.category?.toLowerCase().includes('lansia')
+            );
+          }
+          if (activeCategory === 'Panti Asuhan Anak' || activeCategory === 'Anak') {
+            return (
+              panti.category === 'Anak' ||
+              panti.category === 'Panti Asuhan Anak' ||
+              panti.category?.toLowerCase().includes('anak')
+            );
+          }
+          return (
+            panti.category === activeCategory ||
+            panti.category?.toLowerCase().includes(activeCategory.toLowerCase())
+          );
+        });
 
   const handleSelectPanti = (panti) => {
     if (onSelectPanti) {
@@ -167,7 +183,7 @@ export default function OrphanageDirectory({
               flexWrap: 'wrap',
             }}
           >
-            {['Semua', 'Balita', 'Anak', 'Remaja'].map((cat) => (
+            {['Semua', 'Panti Asuhan Anak', 'Balita', 'Remaja', 'Disabilitas', 'Jompo / Lansia'].map((cat) => (
               <button
                 key={cat}
                 type="button"

@@ -18,6 +18,7 @@ import {
   Sparkles,
   ChevronDown
 } from 'lucide-react';
+import { notificationService } from '../api/notificationService';
 
 /**
  * HaloKidsHeader - Komponen Header / Top Navbar Terpadu (PRD Dinas Sosial)
@@ -28,8 +29,8 @@ import {
  *    - Posisi ikon lonceng tepat di sebelah KANAN tombol "Lacak Tiket" dan di sebelah KIRI menu profil user.
  *
  * 2. Kondisi Belum Login / Pengunjung Publik (Guest):
- *    [ Beranda Informasi ] [ Formulir Pengaduan ] [ Ikon Lonceng Notifikasi Publik / Tracking Notif ] [ Tombol "Login User" ]
- *    - Posisi ikon lonceng tepat di sebelah KIRI tombol "Login User".
+ *    [ Beranda Informasi ] [ Formulir Pengaduan ] [ Ikon Lonceng Notifikasi Publik / Tracking Notif ] [ Tombol "Login" ]
+ *    - Posisi ikon lonceng tepat di sebelah KIRI tombol "Login".
  */
 
 // Mock data notifikasi untuk User Login
@@ -144,8 +145,82 @@ export default function HaloKidsHeader({
 
   // Sinkronkan notifikasi saat status autentikasi berubah
   useEffect(() => {
-    setNotifications(isLoggedIn ? INITIAL_USER_NOTIFICATIONS : INITIAL_GUEST_NOTIFICATIONS);
-  }, [isLoggedIn]);
+    let isMounted = true;
+    async function fetchNotifications() {
+      if (isLoggedIn) {
+        try {
+          const role = currentUser?.role || 'masyarakat';
+          const data = await notificationService.listMine(role);
+          if (isMounted && Array.isArray(data) && data.length > 0) {
+            const mapped = data.map((n) => ({
+              id: `api-notif-${n.id}`,
+              category: n.judul || 'Pemberitahuan',
+              title: n.judul || 'Notifikasi',
+              summary: n.pesan,
+              time: n.tanggal_dibuat
+                ? new Date(n.tanggal_dibuat).toLocaleTimeString('id-ID', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })
+                : 'Baru saja',
+              is_read: !!n.is_read,
+              icon: n.pesan?.toLowerCase().includes('ditolak')
+                ? ShieldAlert
+                : n.pesan?.toLowerCase().includes('donasi')
+                ? HeartHandshake
+                : Bell,
+              iconBg: n.pesan?.toLowerCase().includes('ditolak')
+                ? 'bg-red-50 text-red-600'
+                : 'bg-blue-50 text-blue-600',
+              actionType: 'info'
+            }));
+            setNotifications(mapped);
+            return;
+          }
+        } catch (e) {
+          console.warn('Gagal memuat notifikasi personal:', e);
+        }
+        if (isMounted) setNotifications(INITIAL_USER_NOTIFICATIONS);
+      } else {
+        try {
+          const announcements = await notificationService.listAnnouncements(10);
+          if (isMounted && Array.isArray(announcements) && announcements.length > 0) {
+            const mapped = announcements.map((a) => ({
+              id: `api-ann-${a.id}`,
+              category:
+                a.tipe === 'panti_baru' ? 'LKSA Baru' : 'Pengumuman Dinsos',
+              title: a.judul,
+              summary: a.isi_pengumuman,
+              time: a.tanggal_dibuat
+                ? new Date(a.tanggal_dibuat).toLocaleDateString('id-ID', {
+                    day: 'numeric',
+                    month: 'short'
+                  })
+                : 'Terbaru',
+              is_read: false,
+              icon: a.isi_pengumuman?.toLowerCase().includes('ditolak')
+                ? ShieldAlert
+                : Sparkles,
+              iconBg: a.isi_pengumuman?.toLowerCase().includes('ditolak')
+                ? 'bg-red-50 text-red-600'
+                : 'bg-blue-50 text-blue-600',
+              actionType: 'info'
+            }));
+            setNotifications([...mapped, ...INITIAL_GUEST_NOTIFICATIONS]);
+            return;
+          }
+        } catch (e) {
+          console.warn('Gagal memuat pengumuman publik:', e);
+        }
+        if (isMounted) setNotifications(INITIAL_GUEST_NOTIFICATIONS);
+      }
+    }
+
+    fetchNotifications();
+    return () => {
+      isMounted = false;
+    };
+  }, [isLoggedIn, currentUser]);
 
   // Handler Click Outside
   useEffect(() => {
@@ -175,8 +250,14 @@ export default function HaloKidsHeader({
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
-  const handleMarkAllRead = (e) => {
+  const handleMarkAllRead = async (e) => {
     e.stopPropagation();
+    if (isLoggedIn) {
+      try {
+        const role = currentUser?.role || 'masyarakat';
+        await notificationService.markAllRead(role);
+      } catch (err) {}
+    }
     setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
   };
 
@@ -205,36 +286,29 @@ export default function HaloKidsHeader({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
 
         {/* ======================================================== */}
-        {/* BAGIAN KIRI: LOGO & BRANDING / BREADCRUMB               */}
+        {/* BAGIAN KIRI: LOGO & BRANDING SERAGAM DENGAN LANDING PAGE */}
         {/* ======================================================== */}
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-blue-900 flex items-center justify-center text-white shadow-sm flex-shrink-0">
-            <Shield size={20} className="text-blue-300" />
+        <div
+          onClick={() => onSelectTab('beranda')}
+          className="flex items-center gap-2.5 min-w-0 cursor-pointer flex-shrink-0"
+        >
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#0b1f5c] to-[#1d4ed8] text-white flex items-center justify-center shadow-md shadow-blue-900/20 flex-shrink-0">
+            <HeartHandshake size={22} />
           </div>
 
-          {isLoggedIn ? (
-            /* Breadcrumb / Info Portal (Untuk User Login) */
-            <div className="flex items-center gap-2 truncate">
-              <span className="text-xs font-bold text-slate-800 tracking-tight sm:text-sm">
-                Portal Layanan Warga
+          <div className="flex flex-col">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xl font-extrabold text-[#0b1f5c] tracking-tight leading-none font-heading">
+                HaloKids
               </span>
-              <span className="text-slate-300 hidden sm:inline">/</span>
-              <span className="hidden sm:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                Dinas Sosial Kabupaten
+              <span className="bg-[#1e40af] text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded tracking-wider whitespace-nowrap">
+                LAYANAN SOSIAL TERPADU
               </span>
             </div>
-          ) : (
-            /* Logo & Portal Name (Untuk Pengunjung Publik / Guest) */
-            <div className="flex flex-col">
-              <span className="text-base font-extrabold text-blue-950 tracking-tight leading-none">
-                Halo<span className="text-blue-600">Kids</span>
-              </span>
-              <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                Dinas Sosial Kab.
-              </span>
-            </div>
-          )}
+            <p className="text-[11px] text-slate-500 font-medium m-0 leading-tight">
+              Pemerintah Kabupaten • Layanan Sosial Terpadu
+            </p>
+          </div>
         </div>
 
         {/* ======================================================== */}
@@ -486,7 +560,7 @@ export default function HaloKidsHeader({
             </button>
 
             {/* [3] Ikon Lonceng Notifikasi Publik / Tracking Notif */}
-            {/* Tepat di KIRI tombol "Login User" */}
+            {/* Tepat di KIRI tombol "Login" */}
             <div className="relative" ref={notifRef}>
               <button
                 type="button"
