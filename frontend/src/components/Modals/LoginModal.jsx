@@ -292,6 +292,13 @@ const handleRegisterSubmit = async (e) => {
       jenis_panti: selectedRole === 'pengelola panti' ? regJenisPanti : null,
     });
 
+    // Simpan pilihan jenis panti agar menjadi nilai awal form pengajuan LKSA.
+    try {
+      if (selectedRole === 'pengelola panti') {
+        localStorage.setItem('halokids_pending_jenis_panti', regJenisPanti);
+      }
+    } catch { /* penyimpanan browser tidak tersedia */ }
+
     setIsRegisterMode(false);
     setEmailInput(cleanEmail);
     setPassword(regPassword);

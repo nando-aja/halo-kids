@@ -70,8 +70,10 @@ const [qrisImageError, setQrisImageError] = useState(false);
 
   // Goods Donation State
   const [copiedPantiId, setCopiedPantiId] = useState(null);
-  const [selectedPantiPackage, setSelectedPantiPackage] = useState('LKSA Kasih Bunda Mandiri');
-  const [selectedItems, setSelectedItems] = useState(['Sembako (Beras 10kg & Minyak)', 'Seragam Sekolah SD/SMP']);
+  const [selectedPantiId, setSelectedPantiId] = useState(null);
+  // Barang yang dipilih: { [id_wishlist]: jumlah }
+  const [selectedItems, setSelectedItems] = useState({});
+  const [isPantiLoading, setIsPantiLoading] = useState(true);
   const [courierName, setCourierName] = useState('J&T Express');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [senderName, setSenderName] = useState(currentUser?.name || '');
@@ -137,9 +139,9 @@ const [qrisImageError, setQrisImageError] = useState(false);
             })
           );
 
-          if (isMounted && mapped.length > 0) {
+          if (isMounted) {
             setDynamicPantiGoodsList(mapped);
-            setSelectedPantiPackage(mapped[0].name);
+            setSelectedPantiId(mapped.length > 0 ? mapped[0].id : null);
           }
         }
       } catch (err) {
@@ -147,53 +149,16 @@ const [qrisImageError, setQrisImageError] = useState(false);
       }
     }
 
-    loadDonationData();
+    loadDonationData().finally(() => { if (isMounted) setIsPantiLoading(false); });
     return () => { isMounted = false; };
   }, []);
 
-  const effectivePantiGoodsList = dynamicPantiGoodsList.length > 0 ? dynamicPantiGoodsList : pantiGoodsList;
-
-  const pantiGoodsList = [
-    {
-      id: 'panti-1',
-      name: 'LKSA Kasih Bunda Mandiri',
-      address: 'Jl. Raya Cibinong No. 45, RT 02/RW 05, Kec. Cibinong, Kab. Bogor 16911',
-      phone: '0812-9988-7711 (Ibu Siti)',
-      anakCount: '42 Anak Asuh',
-      items: [
-        { name: 'Sembako (Beras 10kg & Minyak)', urgent: true, target: '20 Paket' },
-        { name: 'Seragam Sekolah SD/SMP', urgent: true, target: '15 Set' },
-        { name: 'Buku Tulis & Alat Sekolah', urgent: false, target: '40 Paket' },
-        { name: 'Sepatu Sekolah Hitam (Ukuran 34-40)', urgent: false, target: '10 Pasang' }
-      ]
-    },
-    {
-      id: 'panti-2',
-      name: 'Panti Asuhan Balita Tunas Bangsa',
-      address: 'Jl. Pemda Tegar Beriman No. 12, Kel. Pakansari, Kec. Cibinong 16915',
-      phone: '0813-8822-4400 (Ns. Ratna)',
-      anakCount: '26 Balita (0-4 Thn)',
-      items: [
-        { name: 'Susu Formula SGM 0-12 Bln (400g)', urgent: true, target: '30 Kaleng' },
-        { name: 'Popok Bayi M & L', urgent: true, target: '25 Pax' },
-        { name: 'Minyak Telon & Sabun Mandi Balita', urgent: false, target: '15 Botol' },
-        { name: 'Kasur Busa Bayi / Perlak', urgent: false, target: '5 Unit' }
-      ]
-    },
-    {
-      id: 'panti-3',
-      name: 'LKSA Bina Harapan Ciawi',
-      address: 'Jl. Raya Puncak Ciawi No. 88, RT 01/RW 03, Kec. Ciawi, Kab. Bogor 16720',
-      phone: '0857-1133-5599 (Pak Rizky)',
-      anakCount: '38 Remaja',
-      items: [
-        { name: 'Komputer / Laptop Bekas Layak Pakai', urgent: true, target: '5 Unit' },
-        { name: 'Bahan Pelatihan Tata Boga (Tepung/Mentega)', urgent: true, target: '10 Paket' },
-        { name: 'Perlengkapan Kebersihan Panti', urgent: false, target: '15 Set' },
-        { name: 'Buku Komputer & Otomotif', urgent: false, target: '20 Buah' }
-      ]
-    }
-  ];
+  // Hanya panti yang sudah disetujui Dinsos (difilter backend) beserta kebutuhan barangnya.
+  const effectivePantiGoodsList = dynamicPantiGoodsList;
+  const selectedPanti =
+    effectivePantiGoodsList.find((p) => p.id === selectedPantiId) || null;
+  const selectedPantiPackage = selectedPanti?.name || '';
+  const availableItems = (selectedPanti?.items || []).filter((it) => it.remaining > 0);
 
   const nominalOptions = [50000, 100000, 250000, 500000, 1000000];
 
@@ -396,41 +361,59 @@ const handleProofSubmit = async (e) => {
     setTimeout(() => setCopiedPantiId(null), 2500);
   };
 
-  const handleItemToggle = (itemName) => {
-    if (selectedItems.includes(itemName)) {
-      setSelectedItems(selectedItems.filter(i => i !== itemName));
-    } else {
-      setSelectedItems([...selectedItems, itemName]);
-    }
+  const handleItemToggle = (wishlistId) => {
+    setSelectedItems((prev) => {
+      const next = { ...prev };
+      if (next[wishlistId] !== undefined) delete next[wishlistId];
+      else next[wishlistId] = 1;
+      return next;
+    });
   };
+
+  const selectedItemNames = availableItems
+    .filter((it) => selectedItems[it.id] !== undefined)
+    .map((it) => `${it.name} (${selectedItems[it.id]})`);
 
   const handlePackageSubmit = async (e) => {
     e.preventDefault();
-    if (selectedItems.length === 0) {
-      alert('Pilih minimal 1 jenis barang yang akan Anda kirimkan.');
+    if (!selectedPanti) {
+      alert('Belum ada panti tujuan yang tersedia.');
+      return;
+    }
+    const entries = Object.entries(selectedItems);
+    if (entries.length === 0) {
+      alert('Pilih minimal 1 barang yang akan Anda kirimkan.');
       return;
     }
     setIsSubmitting(true);
     try {
-      await donasiService.createDonasi({
-        id_panti: 1,
-        jenis_donasi: 'barang',
-        nama_barang: selectedItems.join(', '),
-        jumlah_barang: 1,
-        satuan_barang: 'Paket Logistik',
-        estimasi_waktu_antar: estimasiTanggal || new Date().toISOString().slice(0, 10)
-      });
+      const eta = estimasiTanggal || new Date().toISOString().slice(0, 10);
+      for (const [wishlistId, qty] of entries) {
+        await donasiService.createDonasi({
+          id_panti: selectedPanti.id,
+          id_wishlist: Number(wishlistId),
+          jenis_donasi: 'barang',
+          jumlah_barang: Number(qty),
+          satuan_barang: 'Unit',
+          estimasi_waktu_antar: eta
+        });
+      }
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('halokids:data_updated', { detail: { type: 'donasi' } }));
       }
-    } catch (err) {
-      console.warn('API donasi barang fallback:', err);
-    } finally {
-      setIsSubmitting(false);
-      const receipt = `PKG-DNS-${Math.floor(100000 + Math.random() * 900000)}`;
-      setPackageReceiptCode(receipt);
+      setPackageReceiptCode(`PKG-DNS-${Math.floor(100000 + Math.random() * 900000)}`);
       setShowPackageReceiptModal(true);
       triggerConfetti();
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      alert(
+        (typeof detail === 'string' ? detail : null) ||
+        err?.friendlyMessage ||
+        err?.message ||
+        'Gagal mengirim donasi barang. Pastikan Anda sudah login, lalu coba lagi.'
+      );
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -779,6 +762,11 @@ const handleProofSubmit = async (e) => {
 
               {/* Grid of Orphanage Wishlists & Addresses */}
               <div className="panti-cards-grid" style={{ marginBottom: '3rem' }}>
+                {!isPantiLoading && effectivePantiGoodsList.length === 0 && (
+                  <p style={{ gridColumn: '1 / -1', textAlign: 'center', color: '#64748b', fontStyle: 'italic', margin: 0 }}>
+                    Belum ada panti yang disetujui Dinsos untuk menerima donasi barang.
+                  </p>
+                )}
                 {effectivePantiGoodsList.map((panti) => (
                   <div 
                     key={panti.id}
@@ -861,7 +849,8 @@ const handleProofSubmit = async (e) => {
 
                     <button
                       onClick={() => {
-                        setSelectedPantiPackage(panti.name);
+                        setSelectedPantiId(panti.id);
+                        setSelectedItems({});
                         const el = document.getElementById('form-paket');
                         if (el) el.scrollIntoView({ behavior: 'smooth' });
                       }}
@@ -920,8 +909,11 @@ const handleProofSubmit = async (e) => {
                         Panti Asuhan Tujuan Pengiriman Paket: <span style={{ color: '#dc2626' }}>*</span>
                       </label>
                       <select
-                        value={selectedPantiPackage}
-                        onChange={(e) => setSelectedPantiPackage(e.target.value)}
+                        value={selectedPantiId ?? ''}
+                        onChange={(e) => {
+                          setSelectedPantiId(Number(e.target.value));
+                          setSelectedItems({});
+                        }}
                         style={{
                           width: '100%',
                           padding: '0.75rem 1rem',
@@ -936,7 +928,7 @@ const handleProofSubmit = async (e) => {
                         }}
                       >
                         {effectivePantiGoodsList.map((p) => (
-                          <option key={p.id} value={p.name}>
+                          <option key={p.id} value={p.id}>
                             {p.name} ({p.address.split(',')[1]?.trim() || p.address.split(',')[0]?.trim() || ''})
                           </option>
                         ))}
@@ -950,20 +942,18 @@ const handleProofSubmit = async (e) => {
                       </label>
 
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '0.65rem' }}>
-                        {[
-                          'Sembako (Beras & Minyak)',
-                          'Seragam Sekolah SD/SMP',
-                          'Buku & Alat Tulis Sekolah',
-                          'Susu Formula & Nutrisi Balita',
-                          'Popok Bayi M / L',
-                          'Peralatan Kebersihan Panti',
-                          'Pakaian Layak Pakai Anak',
-                          'Kasur Busa / Selimut'
-                        ].map((item) => {
-                          const isChecked = selectedItems.includes(item);
+                        {availableItems.length === 0 && (
+                          <p style={{ gridColumn: '1 / -1', margin: 0, fontSize: '0.825rem', color: '#64748b', fontStyle: 'italic' }}>
+                            {isPantiLoading
+                              ? 'Memuat daftar kebutuhan barang...'
+                              : 'Panti ini belum memiliki kebutuhan barang yang masih terbuka.'}
+                          </p>
+                        )}
+                        {availableItems.map((item) => {
+                          const isChecked = selectedItems[item.id] !== undefined;
                           return (
                             <label
-                              key={item}
+                              key={item.id}
                               style={{
                                 display: 'flex',
                                 alignItems: 'center',
@@ -982,10 +972,30 @@ const handleProofSubmit = async (e) => {
                               <input
                                 type="checkbox"
                                 checked={isChecked}
-                                onChange={() => handleItemToggle(item)}
+                                onChange={() => handleItemToggle(item.id)}
                                 style={{ accentColor: '#1d4ed8', width: '16px', height: '16px', cursor: 'pointer' }}
                               />
-                              <span style={{ userSelect: 'none' }}>{item}</span>
+                              <span style={{ userSelect: 'none', flex: 1 }}>
+                                {item.name}
+                                <span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>
+                                  Sisa kebutuhan: {item.remaining} unit
+                                </span>
+                              </span>
+                              {isChecked && (
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={item.remaining}
+                                  value={selectedItems[item.id]}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onChange={(e) => {
+                                    const q = Math.max(1, Math.min(item.remaining, Number(e.target.value) || 1));
+                                    setSelectedItems((prev) => ({ ...prev, [item.id]: q }));
+                                  }}
+                                  style={{ width: '64px', padding: '0.3rem', borderRadius: '6px', border: '1px solid #93c5fd', fontSize: '0.8rem' }}
+                                  aria-label={`Jumlah ${item.name}`}
+                                />
+                              )}
                             </label>
                           );
                         })}
@@ -1761,7 +1771,7 @@ const handleProofSubmit = async (e) => {
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#64748b' }}>Barang Dikirim:</span>
-                <strong style={{ maxWidth: '200px', textAlign: 'right' }}>{selectedItems.join(', ')}</strong>
+                <strong style={{ maxWidth: '200px', textAlign: 'right' }}>{selectedItemNames.join(', ')}</strong>
               </div>
               {estimasiTanggal && (
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>

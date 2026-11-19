@@ -14,7 +14,6 @@ from app.core.security import (
     create_access_token,
 )
 from app.db.models.user import User
-from app.db.models.pengajuan_lksa import PengajuanLKSA
 from app.schemas.user import UserCreate, UserResponse
 from app.schemas.auth import TokenResponse
 
@@ -124,21 +123,10 @@ def register(
         db.rollback()
         raise
 
-    if requested_role == "pengelola-panti":
-        draft_app = PengajuanLKSA(
-            id_pengelola=new_user.id,
-            nama_panti=f"LKSA {clean_name}",
-            bentuk_lembaga="Yayasan",
-            alamat="Kabupaten Bogor",
-            kontak=clean_phone,
-            jenis_panti=user_data.jenis_panti or "Panti Asuhan Anak",
-            status_pengajuan="draft",
-        )
-        try:
-            db.add(draft_app)
-            db.commit()
-        except Exception:
-            db.rollback()
+    # Tidak ada pembuatan PantiAsuhan/pengajuan otomatis.
+    #
+    # Pengelola membuat pengajuan LKSA lewat endpoint pengajuan terpisah.
+    # Pilihan jenis_panti saat registrasi diteruskan frontend ke form pengajuan.
 
     return new_user
 
