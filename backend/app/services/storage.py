@@ -1,689 +1,415 @@
 from __future__ import annotations
 
-import re
-from decimal import Decimal
-from difflib import SequenceMatcher
-from pathlib import Path
+import logging
+from datetime import datetime
+from mimetypes import guess_type
+from pathlib import Path, PurePosixPath
+from uuid import uuid4
 
-from sqlalchemy.orm import Session
+from fastapi import HTTPException, UploadFile, status
 
-from app.db.models.adoption import PengajuanAdopsi
-from app.services.storage import get_storage_absolute_path
-
-try:
-    import pymupdf as fitz
-except ImportError:  # pragma: no cover
-    try:
-        import fitz
-    except ImportError:
-        fitz = None
-
-try:
-    from PIL import Image
-except ImportError:  # pragma: no cover
-    Image = None
-
-try:
-    import pytesseract
-except ImportError:  # pragma: no cover
-    pytesseract = None
-
-try:
-    from rapidocr_onnxruntime import RapidOCR
-except ImportError:  # pragma: no cover
-    RapidOCR = None
+from app.core.config import settings
+from app.services.supabase_storage import supabase
 
 
-def configure_tesseract() -> None:
-    """Gunakan TESSERACT_CMD atau lokasi instalasi Windows yang umum."""
-    if pytesseract is None:
-        return
+logger = logging.getLogger(__name__)
 
-    import os
+BASE_DIR = Path(__file__).resolve().parents[2]
+# File-backed application data uses Supabase. STORAGE_DIR is retained for
+# unrelated JSON-based features that still use local data files.
+STORAGE_DIR = BASE_DIR / "storage"
+STORAGE_CACHE_DIR = BASE_DIR / ".storage_cache"
 
-    configured = os.getenv("TESSERACT_CMD")
-    if configured and Path(configured).is_file():
-        pytesseract.pytesseract.tesseract_cmd = configured
-        return
-
-    candidates = [
-        Path(os.environ.get("PROGRAMFILES", "C:/Program Files")) / "Tesseract-OCR" / "tesseract.exe",
-        Path(os.environ.get("PROGRAMFILES(X86)", "C:/Program Files (x86)")) / "Tesseract-OCR" / "tesseract.exe",
-    ]
-    for candidate in candidates:
-        if candidate.is_file():
-            pytesseract.pytesseract.tesseract_cmd = str(candidate)
-            return
-
-
-configure_tesseract()
-
-
-DATE_PATTERNS = [
-    r"\b(\d{1,2})[\-/](\d{1,2})[\-/](\d{4})\b",
-    r"\b(\d{4})[\-/](\d{1,2})[\-/](\d{1,2})\b",
-]
-
-NIK_PATTERN = re.compile(r"\b\d{16}\b")
-PHONE_PATTERN = re.compile(r"\b(?:\+62|62|0)8\d{8,13}\b")
-
-# Dokumen berupa foto (tidak berisi teks) tidak dianggap anomali bila OCR tidak
-# menemukan teks, karena memang tidak ada teks yang diharapkan.
-PHOTO_DOCUMENT_TYPES = {"pas_foto", "foto_rumah"}
-
-# Daftar kelengkapan dokumen COTA menurut PRD (Modul B).
-EXPECTED_INITIAL_DOCUMENTS = [
+STORAGE_FOLDERS = {
     "ktp",
     "kk",
-    "akta_kelahiran",
-    "buku_nikah",
-    "skck",
-    "surat_sehat",
-]
-EXPECTED_ADDITIONAL_DOCUMENTS = [
-    "surat_kesehatan_jiwa",
-    "fungsi_reproduksi",
-    "surat_penghasilan",
-    "pernyataan_resmi",
-    "pas_foto",
-    "foto_rumah",
-]
-
-# Label yang biasa muncul setelah kolom "Nama" pada KTP/KK hasil OCR.
-NAME_STOP_LABELS = (
-    "nik|tempat|tgl|tanggal|lahir|jenis|kelamin|gol|golongan|alamat|rt|rw|"
-    "rt/rw|kel|desa|kecamatan|agama|status|perkawinan|pekerjaan|"
-    "kewarganegaraan|berlaku|kota|provinsi"
-)
-
-
-DOCUMENT_CONTENT_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "ktp": ("kartu tanda penduduk", "nik", "kewarganegaraan", "status perkawinan"),
-    "kk": ("kartu keluarga", "kepala keluarga", "nomor kartu keluarga", "nik"),
-    "akta_kelahiran": ("akta kelahiran", "kutipan akta kelahiran", "tempat lahir", "tanggal lahir"),
-    "buku_nikah": ("buku nikah", "suami", "istri", "akad nikah", "kementerian agama"),
-    "skck": ("surat keterangan catatan kepolisian", "skck", "kepolisian"),
-    "surat_sehat": ("surat keterangan sehat", "surat sehat", "sehat jasmani", "sehat rohani", "bebas narkoba", "puskesmas", "rumah sakit"),
-    "surat_kesehatan_jiwa": ("kesehatan jiwa", "sehat jiwa", "psikiater", "psikolog"),
-    "fungsi_reproduksi": ("fungsi reproduksi", "reproduksi", "dokter"),
-    "surat_penghasilan": ("penghasilan", "gaji", "pendapatan", "slip gaji"),
-    "pernyataan_resmi": ("surat pernyataan", "pernyataan", "materai"),
+    "dokumen_pendukung",
+    "bukti_transfer",
+    "identitas_relawan",
+    "laporan_dana",
+    "galeri_panti",
+    "laporan_pengawasan",
 }
 
+PUBLIC_FOLDERS = {"laporan_dana", "galeri_panti", "laporan_pengawasan"}
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".pdf"}
+MAX_FILE_SIZE = 10 * 1024 * 1024
+OLD_PLACEHOLDER_BYTES = b"%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF"
 
-class COTADocumentAgent:
-    """Single-agent orchestrator untuk OCR, ekstraksi, matching, dan review manual."""
 
-    name = "HaloKids Single-Agent Document Assistant"
+def _require_supabase():
+    if supabase is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Supabase Storage belum dikonfigurasi. Periksa SUPABASE_URL, "
+                "SUPABASE_SECRET_KEY, SUPABASE_PRIVATE_BUCKET, dan "
+                "SUPABASE_PUBLIC_BUCKET pada backend/.env. File tidak akan "
+                "ditandai berhasil jika hanya tersimpan lokal."
+            ),
+        )
 
-    def run(
-        self,
-        document_paths: dict[str, str],
-        db: Session | None = None,
-        adoption: PengajuanAdopsi | None = None,
-    ) -> dict:
-        results: dict[str, dict] = {}
-        anomalies: list[str] = []
-        actions: list[str] = [
-            "membaca berkas",
-            "mengekstraksi teks",
-            "menstrukturkan hasil ke JSON",
-            "mencocokkan hasil dengan data pengajuan",
-            "menentukan apakah perlu tinjauan manual",
-        ]
 
-        for document_type, relative_path in document_paths.items():
+def _get_bucket_name(folder_name: str) -> str:
+    if folder_name not in STORAGE_FOLDERS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Folder storage tidak valid",
+        )
+
+    raw_name = (
+        settings.SUPABASE_PUBLIC_BUCKET
+        if folder_name in PUBLIC_FOLDERS
+        else settings.SUPABASE_PRIVATE_BUCKET
+    )
+    bucket_name = str(raw_name or "").strip()
+    if not bucket_name:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Nama bucket Supabase belum dikonfigurasi. Periksa "
+                "SUPABASE_PUBLIC_BUCKET dan SUPABASE_PRIVATE_BUCKET di backend/.env."
+            ),
+        )
+    return bucket_name
+
+
+def _get_object_path(relative_path: str) -> tuple[str, str]:
+    """Convert storage/<folder>/<filename> into a Supabase bucket/object path."""
+    if not isinstance(relative_path, str) or not relative_path.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Path file kosong",
+        )
+
+    normalized = relative_path.replace("\\", "/")
+    if not normalized.startswith("storage/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Path file harus berada di dalam storage",
+        )
+
+    object_path = normalized[len("storage/"):]
+    segments = object_path.split("/")
+    if (
+        len(segments) < 2
+        or any(segment in {"", ".", ".."} for segment in segments)
+        or object_path.startswith("/")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Path file tidak valid",
+        )
+
+    path = PurePosixPath(object_path)
+    folder_name = path.parts[0]
+    if folder_name not in STORAGE_FOLDERS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Folder storage tidak valid",
+        )
+    return _get_bucket_name(folder_name), object_path
+
+
+def _safe_local_path(relative_path: str) -> Path:
+    normalized = relative_path.replace("\\", "/")
+    if not normalized.startswith("storage/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Path file tidak valid",
+        )
+    root = (BASE_DIR / "storage").resolve()
+    candidate = (BASE_DIR / normalized).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Path file tidak valid",
+        ) from exc
+    return candidate
+
+
+def _get_cache_path(relative_path: str) -> Path:
+    normalized = relative_path.replace("\\", "/")
+    if not normalized.startswith("storage/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Path file tidak valid",
+        )
+
+    object_path = normalized[len("storage/"):]
+    candidate = (STORAGE_CACHE_DIR / object_path).resolve()
+    root = STORAGE_CACHE_DIR.resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Path file tidak valid",
+        ) from exc
+    return candidate
+
+
+def _is_old_placeholder(path: Path) -> bool:
+    try:
+        return path.is_file() and path.read_bytes() == OLD_PLACEHOLDER_BYTES
+    except OSError:
+        return False
+
+
+def _remove_placeholder(path: Path) -> None:
+    if _is_old_placeholder(path):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Could not remove an old placeholder file from cache/storage.", exc_info=True)
+
+
+def save_upload_file(file: UploadFile, folder_name: str, prefix: str = "") -> str:
+    """Upload a real file to Supabase if configured, and always mirror/store locally."""
+    if folder_name not in STORAGE_FOLDERS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Folder storage tidak valid",
+        )
+
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nama file tidak ditemukan",
+        )
+
+    extension = Path(file.filename).suffix.lower()
+    if extension not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Format file harus JPG, JPEG, PNG, atau PDF",
+        )
+
+    filename = f"{prefix}{uuid4().hex}{extension}"
+    object_path = f"{folder_name}/{filename}"
+    total_size = 0
+    chunks: list[bytes] = []
+
+    try:
+        while True:
+            chunk = file.file.read(1024 * 1024)
+            if not chunk:
+                break
+            total_size += len(chunk)
+            if total_size > MAX_FILE_SIZE:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail="Ukuran file maksimal 10 MB",
+                )
+            chunks.append(chunk)
+
+        file_bytes = b"".join(chunks)
+        if not file_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File yang diunggah kosong",
+            )
+
+        content_type = file.content_type or guess_type(file.filename)[0] or "application/octet-stream"
+        if extension in {".jpg", ".jpeg"}:
+            content_type = "image/jpeg"
+        elif extension == ".png":
+            content_type = "image/png"
+        elif extension == ".pdf":
+            content_type = "application/pdf"
+
+        if supabase is not None:
+            bucket_name = _get_bucket_name(folder_name)
             try:
-                absolute_path = get_storage_absolute_path(relative_path)
+                supabase.storage.from_(bucket_name).upload(
+                    path=object_path,
+                    file=file_bytes,
+                    file_options={
+                        "content-type": content_type,
+                        "cache-control": "3600",
+                        "upsert": "false",
+                    },
+                )
             except Exception as exc:
-                # 404 dari storage = berkas memang tidak ada, bukan path yang salah.
-                status_code = getattr(exc, "status_code", None)
-                if status_code == 404:
-                    anomalies.append(
-                        f"File tidak ditemukan: {document_type}"
-                    )
-                elif status_code == 503:
-                    anomalies.append(
-                        f"Penyimpanan Supabase belum dikonfigurasi, berkas tidak bisa dibaca: {document_type}"
-                    )
-                else:
-                    anomalies.append(
-                        f"Path dokumen tidak valid: {document_type}"
-                    )
-                continue
+                logger.exception("Supabase upload failed for folder %s", folder_name)
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=(
+                        "Upload ke Supabase Storage gagal. Periksa nama bucket, "
+                        "izin akses, koneksi, dan secret key backend. Pengajuan "
+                        "belum boleh dilanjutkan dengan berkas ini."
+                    ),
+                ) from exc
 
-            if not absolute_path.is_file():
-                anomalies.append(
-                    f"File tidak ditemukan: {document_type}"
-                )
-                continue
+        # Keep a local copy to support OCR/FileResponse code that expects a Path.
+        # When Supabase is not configured, this serves as the primary local storage.
+        try:
+            local_path = (STORAGE_DIR / folder_name / filename).resolve()
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            local_path.write_bytes(file_bytes)
+        except OSError:
+            logger.warning("Local storage write failed.", exc_info=True)
 
-            text, extraction_method, ocr_error = extract_text(absolute_path)
-            structured = build_structured_result(
-                text=text,
-                file_path=relative_path,
-                document_type=document_type,
-                extraction_method=extraction_method,
-            )
-
-            content_validation = validate_document_content(
-                document_type=document_type,
-                text=text,
-            )
-            structured["content_validation"] = content_validation
-            results[document_type] = structured
-
-            if (
-                not structured["text_found"]
-                and document_type not in PHOTO_DOCUMENT_TYPES
-            ):
-                if ocr_error:
-                    anomalies.append(
-                        f"OCR/ekstraksi gagal pada dokumen {document_type}: {ocr_error}"
-                    )
-                else:
-                    anomalies.append(
-                        f"Teks tidak berhasil diekstraksi dari dokumen: {document_type}"
-                    )
-
-            if (
-                document_type in DOCUMENT_CONTENT_KEYWORDS
-                and document_type not in PHOTO_DOCUMENT_TYPES
-                and not content_validation["matched"]
-                and structured["text_found"]
-            ):
-                anomalies.append(
-                    f"Isi dokumen {document_type} tidak cukup sesuai dengan karakteristik dokumen yang diharapkan."
-                )
-
-            if document_type == "ktp" and structured["nik_terdeteksi"] is None:
-                anomalies.append(
-                    "NIK 16 digit tidak terdeteksi pada dokumen KTP."
-                )
-
-        if adoption is not None:
-            compare_result = self.match_with_database(
-                results=results,
-                adoption=adoption,
-            )
-            anomalies.extend(compare_result["anomalies"])
-        else:
-            compare_result = {
-                "name_match": None,
-                "birth_date_match": None,
-                "anomalies": [],
-            }
-
-        return {
-            "agent": self.name,
-            "mode": "local_ocr_nlp",
-            "documents_checked": len(document_paths),
-            "documents_found": len(results),
-            "steps": actions,
-            "documents": results,
-            "database_matching": compare_result,
-            # Hanya berkas yang benar-benar ada di storage yang dihitung "sudah ada".
-            # Sebelumnya path palsu/sample ikut dihitung lengkap.
-            "kelengkapan_dokumen": self.check_completeness(
-                {key: value for key, value in document_paths.items() if key in results}
-            ),
-            "anomalies": _unique(anomalies),
-            "requires_manual_review": bool(anomalies),
-        }
-
-    @staticmethod
-    def check_completeness(document_paths: dict[str, str]) -> dict:
-        """
-        Rekap kelengkapan dokumen COTA. Dokumen tambahan yang belum ada
-        hanya menjadi informasi bagi admin (bukan anomali), karena pemohon
-        dapat melengkapinya setelah pengajuan awal.
-        """
-        uploaded = {key for key, value in document_paths.items() if value}
-        expected = EXPECTED_INITIAL_DOCUMENTS + EXPECTED_ADDITIONAL_DOCUMENTS
-        return {
-            "sudah_ada": [key for key in expected if key in uploaded],
-            "belum_ada": [key for key in expected if key not in uploaded],
-            "dokumen_awal_lengkap": all(
-                key in uploaded for key in EXPECTED_INITIAL_DOCUMENTS
-            ),
-        }
-
-    def match_with_database(
-        self,
-        results: dict[str, dict],
-        adoption: PengajuanAdopsi,
-    ) -> dict:
-        anomalies: list[str] = []
-        name_match: bool | None = None
-        birth_date_match: bool | None = None
-
-        ktp = results.get("ktp")
-        if ktp:
-            extracted_name = ktp.get("nama_terdeteksi")
-            extracted_birth_date = ktp.get("tanggal_lahir_terdeteksi")
-
-            if extracted_name:
-                name_match = similar_text(
-                    extracted_name,
-                    adoption.nama_pemohon,
-                ) >= 0.80
-                if not name_match:
-                    anomalies.append(
-                        "Nama pada KTP tidak cukup cocok dengan nama pemohon."
-                    )
-            elif ktp.get("text_found"):
-                anomalies.append(
-                    "Nama pada KTP tidak terbaca oleh OCR; perlu dicek manual."
-                )
-
-            if extracted_birth_date:
-                birth_date_match = extracted_birth_date == adoption.tanggal_lahir_pemohon.isoformat()
-                if not birth_date_match:
-                    anomalies.append(
-                        "Tanggal lahir pada KTP tidak cocok dengan data pengajuan."
-                    )
-
-        return {
-            "name_match": name_match,
-            "birth_date_match": birth_date_match,
-            "anomalies": anomalies,
-        }
-
-
-AGENT = COTADocumentAgent()
-
-
-def _rapidocr_extract(path: Path) -> tuple[str, str | None]:
-    if RapidOCR is None:
-        return "", "RapidOCR belum tersedia"
-
-    try:
-        detector = RapidOCR()
-        result, _ = detector(str(path))
-        if not result:
-            return "", None
-
-        lines = [item[1] for item in result if item and len(item) > 1 and item[1]]
-        text = "\n".join(lines).strip()
-        return text, None
+        return f"storage/{object_path}"
+    except HTTPException:
+        raise
     except Exception as exc:
-        return "", str(exc)
-
-
-def extract_text(path: Path) -> tuple[str, str, str | None]:
-    suffix = path.suffix.lower()
-
-    if suffix == ".pdf":
-        if fitz is None:
-            return "", "unavailable", "PyMuPDF belum terpasang"
-
+        logger.exception("Failed to process uploaded file in folder %s", folder_name)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Gagal memproses file upload.",
+        ) from exc
+    finally:
         try:
-            with fitz.open(path) as document:
-                text = "\n".join(
-                    page.get_text("text")
-                    for page in document
-                ).strip()
-
-                if text:
-                    return text, "pdf_text", None
-
-                ocr_pages: list[str] = []
-                if pytesseract is not None and Image is not None:
-                    for page in document:
-                        pixmap = page.get_pixmap(
-                            matrix=fitz.Matrix(2, 2),
-                            alpha=False,
-                        )
-                        image = Image.frombytes(
-                            "RGB",
-                            [pixmap.width, pixmap.height],
-                            pixmap.samples,
-                        )
-                        ocr_pages.append(
-                            pytesseract.image_to_string(image)
-                        )
-                    ocr_text = "\n".join(ocr_pages).strip()
-                    if ocr_text:
-                        return ocr_text, "pdf_ocr", None
-
-                rapid_text, rapid_error = _rapidocr_extract(path)
-                if rapid_text:
-                    return rapid_text, "pdf_rapidocr", None
-                return "", "pdf_ocr_unavailable", rapid_error or "Tesseract/Pillow/RapidOCR tidak tersedia untuk OCR PDF scan"
-        except Exception as exc:
-            return "", "pdf_error", str(exc)
-
-    if suffix in {".jpg", ".jpeg", ".png"}:
-        try:
-            if pytesseract is not None and Image is not None:
-                text = pytesseract.image_to_string(
-                    Image.open(path)
-                ).strip()
-                if text:
-                    return text, "image_ocr", None
-        except Exception as exc:
-            last_error = str(exc)
-        else:
-            last_error = "Tesseract/Pillow belum tersedia"
-
-        rapid_text, rapid_error = _rapidocr_extract(path)
-        if rapid_text:
-            return rapid_text, "image_rapidocr", None
-
-        return "", "image_ocr_unavailable", rapid_error or last_error
-
-    return "", "unsupported", "Format file tidak didukung"
+            file.file.close()
+        except Exception:
+            pass
 
 
-def build_structured_result(
-    text: str,
-    file_path: str,
-    document_type: str = "dokumen",
-    extraction_method: str = "unknown",
-) -> dict:
-    normalized = normalize_text(text)
-    return {
-        "document_type": document_type,
-        "file": file_path,
-        "extraction_method": extraction_method,
-        "text_found": bool(normalized),
-        "nama_terdeteksi": extract_name(normalized),
-        "nik_terdeteksi": extract_nik(normalized),
-        "tanggal_lahir_terdeteksi": extract_birth_date(normalized),
-        "tanggal_terdeteksi": extract_dates(normalized),
-        "nominal_terdeteksi": extract_money(normalized),
-        "nomor_referensi_terdeteksi": extract_reference(normalized),
-        "panjang_teks": len(normalized),
-        "ringkasan_teks": normalized[:500],
-    }
+def get_storage_absolute_path(relative_path: str) -> Path:
+    """Return a real local/cache file, downloading it from Supabase when necessary."""
+    local_path = _safe_local_path(relative_path)
+    cache_path = _get_cache_path(relative_path)
 
+    # Versions of the earlier storage module could create a tiny fake PDF when
+    # a file was missing. Never pass that placeholder to OCR or document review.
+    _remove_placeholder(local_path)
+    _remove_placeholder(cache_path)
 
-def validate_document_content(document_type: str, text: str) -> dict:
-    """Validasi semantik ringan berbasis kata kunci; tidak menggantikan review manusia."""
-    keywords = DOCUMENT_CONTENT_KEYWORDS.get(document_type)
-    if not keywords:
-        return {
-            "matched": True,
-            "expected_keywords": [],
-            "matched_keywords": [],
-            "message": "Tidak ada validator isi khusus untuk tipe dokumen ini.",
-        }
+    if local_path.is_file():
+        return local_path
+    if cache_path.is_file():
+        return cache_path
 
-    lowered = normalized_lower(text)
-    compact = "".join(lowered.split())
-    matched_keywords = []
-    for keyword in keywords:
-        compact_keyword = "".join(keyword.split())
-        if keyword in lowered or compact_keyword in compact:
-            matched_keywords.append(keyword)
-    # Threshold konservatif: satu atau dua istilah yang relevan sudah cukup untuk
-    # melewati validator heuristik, tetapi hasil tetap ditampilkan sebagai alat bantu.
-    minimum_hits = 1
-    matched = len(matched_keywords) >= minimum_hits
+    if supabase is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File tidak ditemukan di penyimpanan lokal.",
+        )
 
-    return {
-        "matched": matched,
-        "expected_keywords": list(keywords),
-        "matched_keywords": matched_keywords,
-        "message": (
-            "Karakteristik teks cukup sesuai."
-            if matched
-            else "Karakteristik teks tidak cukup sesuai; arahkan ke review manual."
-        ),
-    }
-
-
-def analyze_adoption_documents(
-    document_paths: dict[str, str],
-    db: Session | None = None,
-    adoption: PengajuanAdopsi | None = None,
-) -> dict:
-    return AGENT.run(
-        document_paths=document_paths,
-        db=db,
-        adoption=adoption,
-    )
-
-
-def parse_idr_amount(value: str | None) -> Decimal | None:
-    """
-    Mengubah teks nominal hasil OCR menjadi angka.
-    Mendukung "500.000", "500.000,00", "500,000", dan "500,000.00".
-    """
-    if not value:
-        return None
-
-    cleaned = re.sub(r"[^0-9.,]", "", value).strip(".,")
-    if not cleaned:
-        return None
-
-    has_dot = "." in cleaned
-    has_comma = "," in cleaned
-
-    if has_dot and has_comma:
-        decimal_sep = "." if cleaned.rfind(".") > cleaned.rfind(",") else ","
-        thousand_sep = "," if decimal_sep == "." else "."
-        cleaned = cleaned.replace(thousand_sep, "").replace(decimal_sep, ".")
-    elif has_dot or has_comma:
-        sep = "." if has_dot else ","
-        parts = cleaned.split(sep)
-        if len(parts) > 2 or len(parts[-1]) == 3:
-            cleaned = "".join(parts)
-        else:
-            cleaned = ".".join(parts)
-
+    bucket_name, object_path = _get_object_path(relative_path)
     try:
-        return Decimal(cleaned)
+        file_bytes = supabase.storage.from_(bucket_name).download(object_path)
+        if not file_bytes or file_bytes == OLD_PLACEHOLDER_BYTES:
+            raise FileNotFoundError("Supabase returned an empty or placeholder object")
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_bytes(file_bytes)
+        return cache_path
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Could not download file from Supabase object %s", object_path)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File tidak ditemukan di penyimpanan. Unggah ulang dokumen yang hilang.",
+        ) from exc
+
+
+def stored_file_exists(relative_path: str) -> bool:
+    """Return True only when a real local/cache/cloud file can be resolved."""
+    try:
+        return get_storage_absolute_path(relative_path).is_file()
     except Exception:
-        return None
+        return False
 
 
-def analyze_transfer_proof(
-    file_path: str,
-    expected_amount: Decimal | int | float | None = None,
-) -> dict:
-    absolute_path = get_storage_absolute_path(file_path)
-
-    if not absolute_path.is_file():
-        return {
-            "agent": AGENT.name,
-            "document_type": "bukti_transfer",
-            "file": file_path,
-            "requires_manual_review": True,
-            "anomalies": ["File bukti transfer tidak ditemukan."],
-        }
-
-    text, method, error = extract_text(absolute_path)
-    structured = build_structured_result(
-        text=text,
-        file_path=file_path,
-        document_type="bukti_transfer",
-        extraction_method=method,
-    )
-
-    anomalies: list[str] = []
-    lower = normalized_lower(text)
-
-    transfer_keywords = [
-        "transfer",
-        "berhasil",
-        "success",
-        "sukses",
-        "dibayar",
-        "payment",
-    ]
-
-    if not any(keyword in lower for keyword in transfer_keywords):
-        anomalies.append(
-            "Kata kunci transaksi transfer tidak cukup jelas pada bukti."
+def resolve_public_file(folder_name: str, filename: str) -> Path:
+    if folder_name not in PUBLIC_FOLDERS:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File tidak ditemukan",
+        )
+    if not filename or filename != Path(filename).name or filename in {".", ".."}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nama file tidak valid",
         )
 
-    if not structured["text_found"]:
-        anomalies.append(
-            error or "Teks bukti transfer tidak berhasil diekstraksi."
+    relative_path = (Path("storage") / folder_name / filename).as_posix()
+    path = get_storage_absolute_path(relative_path)
+    if not path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File tidak ditemukan",
         )
-
-    nominal_match: bool | None = None
-    detected_amount = parse_idr_amount(structured["nominal_terdeteksi"])
-
-    if expected_amount is not None and structured["text_found"]:
-        expected = Decimal(str(expected_amount))
-        if detected_amount is None:
-            anomalies.append(
-                "Nominal pada bukti transfer tidak terbaca; "
-                "tidak dapat dicocokkan dengan nominal donasi."
-            )
-        else:
-            nominal_match = abs(detected_amount - expected) < Decimal("0.5")
-            if not nominal_match:
-                anomalies.append(
-                    f"Nominal pada bukti transfer ({detected_amount:,.0f}) "
-                    f"tidak sama dengan nominal donasi ({expected:,.0f})."
-                )
-
-    return {
-        "agent": AGENT.name,
-        "document_type": "bukti_transfer",
-        "file": file_path,
-        "steps": [
-            "membaca bukti transfer",
-            "OCR/ekstraksi teks",
-            "ekstraksi nominal/tanggal/referensi",
-            "mencocokkan nominal dengan data donasi (bila tersedia)",
-            "cek anomali dasar",
-            "bila anomali, serahkan ke verifikasi manual",
-        ],
-        "structured": structured,
-        "nominal_terdeteksi_angka": (
-            str(detected_amount) if detected_amount is not None else None
-        ),
-        "nominal_donasi_cocok": nominal_match,
-        "anomalies": _unique(anomalies),
-        "requires_manual_review": bool(anomalies),
-    }
+    return path
 
 
-def normalize_text(text: str) -> str:
-    return " ".join(text.split())
+def _list_local_files(folder_name: str, prefix: str = "") -> list[dict]:
+    local_dir = (STORAGE_DIR / folder_name).resolve()
+    if not local_dir.is_dir():
+        return []
+    files = []
+    for path in sorted(local_dir.iterdir(), key=lambda item: item.stat().st_mtime, reverse=True):
+        if not path.is_file() or not path.name.startswith(prefix) or _is_old_placeholder(path):
+            continue
+        files.append({
+            "file": (Path("storage") / folder_name / path.name).as_posix(),
+            "nama_file": path.name,
+            "tanggal_unggah": path.stat().st_mtime,
+        })
+    return files
 
 
-def normalized_lower(text: str) -> str:
-    return normalize_text(text).lower()
+def list_folder_files(folder_name: str, prefix: str = "") -> list[dict]:
+    """List files from Supabase as source of truth; use local only on remote failure."""
+    if folder_name not in STORAGE_FOLDERS:
+        return []
+
+    if supabase is None:
+        return _list_local_files(folder_name, prefix)
+
+    bucket_name = _get_bucket_name(folder_name)
+    try:
+        items = supabase.storage.from_(bucket_name).list(
+            folder_name,
+            {"limit": 100, "offset": 0},
+        )
+    except Exception:
+        logger.exception("Failed to list Supabase folder %s", folder_name)
+        return _list_local_files(folder_name, prefix)
+
+    result = []
+    for item in items or []:
+        filename = item.get("name")
+        if not filename or not filename.startswith(prefix):
+            continue
+        if item.get("id") is None and item.get("metadata") is None:
+            continue
+        updated_at = item.get("updated_at") or item.get("created_at")
+        timestamp = 0
+        if updated_at:
+            try:
+                timestamp = datetime.fromisoformat(updated_at.replace("Z", "+00:00")).timestamp()
+            except (ValueError, TypeError, AttributeError):
+                timestamp = 0
+        result.append({
+            "file": (Path("storage") / folder_name / filename).as_posix(),
+            "nama_file": filename,
+            "tanggal_unggah": timestamp,
+        })
+    return sorted(result, key=lambda item: item["tanggal_unggah"], reverse=True)
 
 
-def extract_nik(text: str) -> str | None:
-    compact = re.sub(r"[^0-9]", " ", text)
-    match = NIK_PATTERN.search(compact)
-    return match.group(0) if match else None
+def delete_stored_file(relative_path: str) -> None:
+    """Delete the remote object if Supabase is enabled; and delete local copies."""
+    if supabase is not None:
+        bucket_name, object_path = _get_object_path(relative_path)
+        try:
+            supabase.storage.from_(bucket_name).remove([object_path])
+        except Exception as exc:
+            logger.exception("Supabase deletion failed for object %s", object_path)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Gagal menghapus berkas dari Supabase Storage.",
+            ) from exc
 
-
-def extract_dates(text: str) -> list[str]:
-    dates: list[str] = []
-
-    for pattern in DATE_PATTERNS:
-        for match in re.findall(pattern, text):
-            if len(match[0]) == 4:
-                year, month, day = map(int, match)
-            else:
-                day, month, year = map(int, match)
-
-            if 1 <= month <= 12 and 1 <= day <= 31:
-                dates.append(
-                    f"{year:04d}-{month:02d}-{day:02d}"
-                )
-
-    return _unique(dates)[:10]
-
-
-def extract_birth_date(text: str) -> str | None:
-    patterns = [
-        r"(?:tanggal lahir|tempat/tgl lahir|lahir)\s*[:\-]?\s*([^,;|]+)",
-        r"(?:tgl\.\s*lahir)\s*[:\-]?\s*([^,;|]+)",
-    ]
-
-    candidates: list[str] = []
-    for pattern in patterns:
-        candidates.extend(re.findall(pattern, text, flags=re.I))
-
-    for candidate in candidates:
-        found = extract_dates(candidate)
-        if found:
-            return found[0]
-
-    dates = extract_dates(text)
-    return dates[0] if dates else None
-
-
-def extract_name(text: str) -> str | None:
-    """Ekstraksi nama yang toleran terhadap hasil OCR berformat label/non-label."""
-    patterns = [
-        (
-            r"\b(?:nama lengkap|nama pemohon|nama)\s*[:\-]\s*"
-            r"([A-Za-z][A-Za-z .'\-]{2,99}?)"
-            rf"(?=\s+(?:{NAME_STOP_LABELS})\b|[^A-Za-z .'\-]|$)"
-        ),
-        (
-            r"\b(?:nama lengkap|nama pemohon|nama)\s+"
-            r"([A-Za-z][A-Za-z .'\-]{2,99}?)"
-            rf"(?=\s+(?:{NAME_STOP_LABELS})\b|$)"
-        ),
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, text, flags=re.I)
-        if match:
-            value = normalize_text(match.group(1)).strip(" -:;,")
-            if value:
-                return value[:100]
-
-    return None
-
-
-def extract_money(text: str) -> str | None:
-    patterns = [
-        r"(?:rp|idr)\s*([0-9][0-9\.,]*)",
-        r"(?:nominal|jumlah|total)\s*[:\-]?\s*(?:rp|idr)?\s*([0-9][0-9\.,]*)",
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, text, flags=re.I)
-        if match:
-            return match.group(1)
-
-    return None
-
-
-def extract_reference(text: str) -> str | None:
-    patterns = [
-        r"(?:ref(?:erence)?|kode transaksi|no transaksi|transaction id)\s*[:\-]\s*([A-Za-z0-9\-_/]+)",
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, text, flags=re.I)
-        if match:
-            return match.group(1)
-
-    phone = PHONE_PATTERN.search(text)
-    return phone.group(0) if phone else None
-
-
-def similar_text(left: str, right: str) -> float:
-    left_normalized = " ".join(left.lower().split())
-    right_normalized = " ".join(right.lower().split())
-    return SequenceMatcher(
-        None,
-        left_normalized,
-        right_normalized,
-    ).ratio()
-
-
-def _unique(values: list[str]) -> list[str]:
-    result: list[str] = []
-    seen: set[str] = set()
-
-    for value in values:
-        if value not in seen:
-            seen.add(value)
-            result.append(value)
-
-    return result
+    local_path = _safe_local_path(relative_path)
+    cache_path = _get_cache_path(relative_path)
+    for path in (local_path, cache_path):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Local cache cleanup failed.", exc_info=True)
