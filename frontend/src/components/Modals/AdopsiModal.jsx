@@ -153,47 +153,65 @@ export default function AdopsiModal({ isOpen, onClose }) {
   // -------------------------------------------------------------------
   // STATE TAB 4: TRACKING TICKET STATUS
   // -------------------------------------------------------------------
-  const [searchTicketCode, setSearchTicketCode] = useState('PIPA-2024-012');
-  const [activeTrackingResult, setActiveTrackingResult] = useState({
-    id: 'PIPA-2024-012',
-    applicant: 'Bpk. Hendra & Ibu Siska',
-    targetChild: 'Ahmad Faiz (3 Thn)',
-    originPanti: 'Panti Balita Tunas Bangsa',
-    dateSubmitted: '02 Oktober 2024',
-    currentStepIndex: 3, // 1 to 5
-    statusLabel: 'Sidang Rekomendasi Tim PIPA Dinsos',
-    peksosAssigned: 'Ns. Ratna Juwita, S.Tr.Sos (Peksos Utama)',
-    notes: 'Home Visit & Asesmen Kesediaan Keluarga telah lolos dengan skor Sangat Layak. Saat ini menunggu keputusan Sidang Tim PIPA Dinsos.'
+  const [searchTicketCode, setSearchTicketCode] = useState('');
+  const [activeTrackingResult, setActiveTrackingResult] = useState(null);
+  const [trackingLoading, setTrackingLoading] = useState(false);
+  const [trackingError, setTrackingError] = useState('');
+  // Tiket milik pengguna yang sedang login (dari database), untuk pilihan cepat.
+  const [myTickets, setMyTickets] = useState([]);
+
+  // Bentuk hasil lacak dari respons API; semua nilai berasal dari database.
+  const mapTrackingResponse = (data) => ({
+    id: data.kode_tiket,
+    applicant: data.nama_pemohon,
+    originPanti: data.nama_panti || 'Rekomendasi terbuka Dinsos (belum memilih panti)',
+    dateSubmitted: data.tanggal_pengajuan
+      ? new Date(data.tanggal_pengajuan).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
+      : '-',
+    currentStepIndex: data.tahap_saat_ini,
+    statusLabel: data.label_status,
+    rejected: Boolean(data.ditolak),
+    notes: data.catatan,
   });
+
+  const runTrackTicket = async (code) => {
+    const cleanCode = String(code || '').trim().toUpperCase();
+    if (!cleanCode) {
+      setTrackingError('Masukkan nomor registrasi COTA terlebih dahulu.');
+      return;
+    }
+    setTrackingLoading(true);
+    setTrackingError('');
+    try {
+      const data = await adopsiService.trackTicket(cleanCode);
+      setActiveTrackingResult(mapTrackingResponse(data));
+    } catch (err) {
+      setActiveTrackingResult(null);
+      const statusCode = err?.response?.status;
+      setTrackingError(
+        statusCode === 401
+          ? 'Silakan masuk (login) terlebih dahulu untuk melacak pengajuan Anda.'
+          : statusCode === 404
+            ? 'Nomor registrasi tidak ditemukan atau bukan milik akun Anda.'
+            : err?.friendlyMessage || 'Gagal melacak tiket. Coba lagi beberapa saat.'
+      );
+    } finally {
+      setTrackingLoading(false);
+    }
+  };
+
+  // Muat daftar tiket milik sendiri saat tab lacak dibuka.
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'lacak') return undefined;
+    let active = true;
+    adopsiService.getMyAdoptions()
+      .then((list) => { if (active && Array.isArray(list)) setMyTickets(list); })
+      .catch(() => { if (active) setMyTickets([]); });
+    return () => { active = false; };
+  }, [isOpen, activeTab, submittedTicket]);
 
   // Early return harus SETELAH semua hook (Rules of Hooks).
   if (!isOpen) return null;
-
-  // Sample database tickets for tracking demo
-  const sampleTickets = {
-    'PIPA-2024-012': {
-      id: 'PIPA-2024-012',
-      applicant: 'Bpk. Hendra & Ibu Siska',
-      targetChild: 'Ahmad Faiz (3 Thn)',
-      originPanti: 'Panti Balita Tunas Bangsa',
-      dateSubmitted: '02 Oktober 2024',
-      currentStepIndex: 3,
-      statusLabel: 'Verifikasi Sidang PIPA Dinsos',
-      peksosAssigned: 'Dra. Endang Wulandari (Peksos Dinsos)',
-      notes: 'Berkas administrasi & laporan Home Visit telah diverifikasi lengkap. Tinggal pelaksanaan Sidang Rekomendasi PIPA.'
-    },
-    'PIPA-2024-009': {
-      id: 'PIPA-2024-009',
-      applicant: 'Bpk. Dr. Ridwan & Ibu Elena',
-      targetChild: 'Siti Nurhaliza (6 Thn)',
-      originPanti: 'LKSA Kasih Bunda Mandiri',
-      dateSubmitted: '15 September 2024',
-      currentStepIndex: 5,
-      statusLabel: 'SK Pengangkatan Anak Terbit (Disetujui Resmi)',
-      peksosAssigned: 'Bpk. Sugeng Rahardjo, M.Si',
-      notes: 'Penetapan Pengadilan Negeri telah terbit. Proses adopsi legal COTA dinyatakan Selesai & Sah secara Hukum Negara.'
-    }
-  };
 
   const handleFileUpload = async (categoryKey, event) => {
     const files = Array.from(event.target.files || []);
@@ -375,38 +393,14 @@ export default function AdopsiModal({ isOpen, onClose }) {
       });
     } catch (err) { }
 
-    // Auto update tracking view to show newly created ticket
-    setActiveTrackingResult({
-      id: generatedTicket,
-      applicant: `Bpk. ${formData.namaSuami} & Ibu ${formData.namaIstri}`,
-      targetChild: 'Calon Anak Asuh (Pilihan ' + formData.pantiTujuan + ')',
-      originPanti: formData.pantiTujuan,
-      dateSubmitted: 'Hari ini (Terkirim ke Dinsos)',
-      currentStepIndex: 1,
-      statusLabel: 'Diajukan / Menunggu Verifikasi AI & Berkas Dinsos',
-      peksosAssigned: 'Tim Peksos Dinsos Kabupaten (Dalam Penugasan)',
-      notes: 'Permohonan COTA resmi telah berhasil dikirim. AI Agent sedang memvalidasi kesesuaian berkas dengan database Dinsos.'
-    });
+    // Tampilkan tiket yang baru dibuat langsung dari data yang tersimpan di server.
+    setSearchTicketCode(generatedTicket);
+    runTrackTicket(generatedTicket);
   };
 
   const handleSearchTicket = (e) => {
     e.preventDefault();
-    const cleanCode = searchTicketCode.trim().toUpperCase();
-    if (sampleTickets[cleanCode]) {
-      setActiveTrackingResult(sampleTickets[cleanCode]);
-    } else {
-      setActiveTrackingResult({
-        id: cleanCode,
-        applicant: 'Bpk. Wahyu & Ibu Pertiwi',
-        targetChild: 'Anak Asuh Panti Balita',
-        originPanti: 'Panti Balita Tunas Bangsa',
-        dateSubmitted: '05 Oktober 2024',
-        currentStepIndex: 2,
-        statusLabel: 'Home Visit & Asesmen Peksos',
-        peksosAssigned: 'Ns. Ratna Juwita, S.Tr.Sos',
-        notes: 'Berkas pendaftaran awal terverifikasi. Tim Peksos dijadwalkan melakukan kunjungan ke rumah pemohon minggu ini.'
-      });
-    }
+    runTrackTicket(searchTicketCode);
   };
 
   const syaratUtama = [
@@ -1268,30 +1262,39 @@ export default function AdopsiModal({ isOpen, onClose }) {
                     type="text"
                     value={searchTicketCode}
                     onChange={(e) => setSearchTicketCode(e.target.value)}
-                    placeholder="Contoh: PIPA-2024-012"
+                    placeholder="Contoh: PIPA-2024-12"
                     style={{ flex: 1, padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '0.9rem', fontWeight: 700 }}
                   />
-                  <button type="submit" className="btn btn-primary" style={{ padding: '0.75rem 1.5rem', fontWeight: 700 }}>
-                    <Search size={18} /> Cari Tiket
+                  <button type="submit" disabled={trackingLoading} className="btn btn-primary" style={{ padding: '0.75rem 1.5rem', fontWeight: 700 }}>
+                    <Search size={18} /> {trackingLoading ? 'Mencari...' : 'Cari Tiket'}
                   </button>
                 </form>
 
-                {/* Sample Preset Buttons */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.85rem' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700 }}>Contoh Tiket Demo:</span>
-                  <button
-                    onClick={() => { setSearchTicketCode('PIPA-2024-012'); setActiveTrackingResult(sampleTickets['PIPA-2024-012']); }}
-                    style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 700 }}
-                  >
-                    PIPA-2024-012 (Verifikasi PIPA)
-                  </button>
-                  <button
-                    onClick={() => { setSearchTicketCode('PIPA-2024-009'); setActiveTrackingResult(sampleTickets['PIPA-2024-009']); }}
-                    style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 700 }}
-                  >
-                    PIPA-2024-009 (SK Terbit/Disetujui)
-                  </button>
-                </div>
+                {trackingError && (
+                  <p style={{ margin: '0.75rem 0 0', fontSize: '0.8rem', color: '#dc2626', fontWeight: 600 }}>
+                    {trackingError}
+                  </p>
+                )}
+
+                {/* Tiket milik akun yang sedang login */}
+                {myTickets.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.85rem' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700 }}>Tiket Anda:</span>
+                    {myTickets.map((t) => {
+                      const code = `PIPA-2024-${t.id}`;
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => { setSearchTicketCode(code); runTrackTicket(code); }}
+                          style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 700 }}
+                        >
+                          {code}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Status Tracking Pipeline Result Card */}
@@ -1314,8 +1317,8 @@ export default function AdopsiModal({ isOpen, onClose }) {
 
                     <div style={{ textAlign: 'right' }}>
                       <span style={{
-                        background: activeTrackingResult.currentStepIndex === 5 ? '#dcfce7' : '#dbeafe',
-                        color: activeTrackingResult.currentStepIndex === 5 ? '#15803d' : '#1e40af',
+                        background: activeTrackingResult.rejected ? '#fee2e2' : activeTrackingResult.currentStepIndex === 5 ? '#dcfce7' : '#dbeafe',
+                        color: activeTrackingResult.rejected ? '#b91c1c' : activeTrackingResult.currentStepIndex === 5 ? '#15803d' : '#1e40af',
                         fontSize: '0.8rem',
                         fontWeight: 800,
                         padding: '0.35rem 0.85rem',
@@ -1378,18 +1381,12 @@ export default function AdopsiModal({ isOpen, onClose }) {
 
                   {/* Detail Info Box */}
                   <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1rem', fontSize: '0.85rem' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                      <div>
-                        <strong style={{ color: '#64748b', fontSize: '0.75rem', display: 'block' }}>Target Anak / Panti Asuhan:</strong>
-                        <span style={{ color: '#0b1f5c', fontWeight: 700 }}>{activeTrackingResult.targetChild}</span> ({activeTrackingResult.originPanti})
-                      </div>
-                      <div>
-                        <strong style={{ color: '#64748b', fontSize: '0.75rem', display: 'block' }}>Peksos Penanggung Jawab:</strong>
-                        <span style={{ color: '#0b1f5c', fontWeight: 700 }}>{activeTrackingResult.peksosAssigned}</span>
-                      </div>
+                    <div style={{ marginBottom: '0.75rem' }}>
+                      <strong style={{ color: '#64748b', fontSize: '0.75rem', display: 'block' }}>Panti Asuhan Tujuan:</strong>
+                      <span style={{ color: '#0b1f5c', fontWeight: 700 }}>{activeTrackingResult.originPanti}</span>
                     </div>
                     <div style={{ borderTop: '1px solid #cbd5e1', paddingTop: '0.65rem' }}>
-                      <strong style={{ color: '#334155', display: 'block', marginBottom: '2px' }}>Catatan Evaluasi Resmi Dinsos:</strong>
+                      <strong style={{ color: '#334155', display: 'block', marginBottom: '2px' }}>Keterangan Status:</strong>
                       <p style={{ color: '#475569', margin: 0, lineHeight: 1.4 }}>
                         {activeTrackingResult.notes}
                       </p>

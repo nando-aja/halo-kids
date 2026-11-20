@@ -75,6 +75,14 @@ export const adopsiService = {
     return response.data;
   },
 
+  /** Lacak pengajuan COTA berdasarkan nomor registrasi (hanya milik sendiri). */
+  async trackTicket(kodeTiket) {
+    const response = await apiClient.get(
+      `/api/masyarakat/pengajuan-adopsi/lacak/${encodeURIComponent(kodeTiket)}`
+    );
+    return response.data;
+  },
+
   /** Detail pengajuan milik pemohon. */
   async getMyAdoptionDetail(id) {
     const response = await apiClient.get(`/api/masyarakat/pengajuan-adopsi/${id}`);
