@@ -204,7 +204,7 @@ export default function UserSidebar({
                       overflow: 'hidden'
                     }}
                   >
-                    Pemerintah Kabupaten • Layanan Sosial Terpadu
+                    Layanan Sosial Terpadu yang Diawasi oleh Dinas Sosial setempat
                   </p>
                 </div>
               )}

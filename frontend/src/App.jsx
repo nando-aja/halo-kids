@@ -468,7 +468,7 @@ const [viewMode, setViewMode] = useState(() => {
             onSwitchToLanding={() => { setViewMode('landing'); setActiveTab('beranda'); }}
             onSwitchToDashboard={() => { if (canUseAdminDashboard(currentUser)) setViewMode('dashboard'); }}
             onSwitchToPanti={() => { setViewMode('panti'); setActiveTab('panti'); }}
-            onSwitchToDonasi={() => { setViewMode('donasi'); setActiveTab('donasi'); }}
+            onSwitchToDonasi={() => { if (!isLoggedIn) { setIsLoginOpen(true); return; } setViewMode('donasi'); setActiveTab('donasi'); }}
             onSwitchToAdopsi={() => { setViewMode('adopsi'); setActiveTab('adopsi'); }}
             onOpenHotline={() => setIsHotlineOpen(true)}
             onOpenLogin={() => setIsLoginOpen(true)}
@@ -487,7 +487,7 @@ const [viewMode, setViewMode] = useState(() => {
             onSwitchToLanding={() => { setViewMode('landing'); setActiveTab('beranda'); }}
             onSwitchToPengaduan={() => { setViewMode('pengaduan'); setActiveTab('pengaduan'); }}
             onSwitchToPanti={() => { setViewMode('panti'); setActiveTab('panti'); }}
-            onSwitchToDonasi={() => { setViewMode('donasi'); setActiveTab('donasi'); }}
+            onSwitchToDonasi={() => { if (!isLoggedIn) { setIsLoginOpen(true); return; } setViewMode('donasi'); setActiveTab('donasi'); }}
             onSwitchToAdopsi={() => { setViewMode('adopsi'); setActiveTab('adopsi'); }}
             onOpenHotline={() => setIsHotlineOpen(true)}
             onOpenLogin={() => setIsLoginOpen(true)}
@@ -509,7 +509,7 @@ const [viewMode, setViewMode] = useState(() => {
             onSwitchToLanding={() => { setViewMode('landing'); setActiveTab('beranda'); }}
             onSwitchToPengaduan={() => { setViewMode('pengaduan'); setActiveTab('pengaduan'); }}
             onSwitchToPanti={() => { setViewMode('panti'); setActiveTab('panti'); }}
-            onSwitchToDonasi={() => { setViewMode('donasi'); setActiveTab('donasi'); }}
+            onSwitchToDonasi={() => { if (!isLoggedIn) { setIsLoginOpen(true); return; } setViewMode('donasi'); setActiveTab('donasi'); }}
             onSwitchToAdopsi={() => { setViewMode('adopsi'); setActiveTab('adopsi'); }}
             onOpenHotline={() => setIsHotlineOpen(true)}
             onOpenLogin={() => setIsLoginOpen(true)}
@@ -530,7 +530,7 @@ const [viewMode, setViewMode] = useState(() => {
             onSwitchToLanding={() => { setViewMode('landing'); setActiveTab('beranda'); }}
             onSwitchToPengaduan={() => { setViewMode('pengaduan'); setActiveTab('pengaduan'); }}
             onSwitchToPanti={() => { setViewMode('panti'); setActiveTab('panti'); }}
-            onSwitchToDonasi={() => { setViewMode('donasi'); setActiveTab('donasi'); }}
+            onSwitchToDonasi={() => { if (!isLoggedIn) { setIsLoginOpen(true); return; } setViewMode('donasi'); setActiveTab('donasi'); }}
             onSwitchToAdopsi={() => { setViewMode('adopsi'); setActiveTab('adopsi'); }}
             onSwitchToDashboard={() => { if (canUseAdminDashboard(currentUser)) setViewMode('dashboard'); }}
             onOpenHotline={() => setIsHotlineOpen(true)}
@@ -553,7 +553,7 @@ const [viewMode, setViewMode] = useState(() => {
               onSwitchToDashboard={() => { if (canUseAdminDashboard(currentUser)) setViewMode('dashboard'); }}
               onSwitchToPengaduan={() => { setViewMode('pengaduan'); setActiveTab('pengaduan'); }}
               onSwitchToPanti={() => { setViewMode('panti'); setActiveTab('panti'); }}
-              onSwitchToDonasi={() => { setViewMode('donasi'); setActiveTab('donasi'); }}
+              onSwitchToDonasi={() => { if (!isLoggedIn) { setIsLoginOpen(true); return; } setViewMode('donasi'); setActiveTab('donasi'); }}
               onSwitchToAdopsi={() => { setViewMode('adopsi'); setActiveTab('adopsi'); }}
               onOpenLapor={() => { setViewMode('pengaduan'); setActiveTab('pengaduan'); }}
               onOpenLacak={() => setIsLacakOpen(true)}
@@ -578,7 +578,7 @@ const [viewMode, setViewMode] = useState(() => {
               onSwitchToDashboard={() => { if (canUseAdminDashboard(currentUser)) setViewMode('dashboard'); }}
               onSwitchToPengaduan={() => { setViewMode('pengaduan'); setActiveTab('pengaduan'); }}
               onSwitchToPanti={() => { setViewMode('panti'); setActiveTab('panti'); }}
-              onSwitchToDonasi={() => { setViewMode('donasi'); setActiveTab('donasi'); }}
+              onSwitchToDonasi={() => { if (!isLoggedIn) { setIsLoginOpen(true); return; } setViewMode('donasi'); setActiveTab('donasi'); }}
               onSwitchToAdopsi={() => { setViewMode('adopsi'); setActiveTab('adopsi'); }}
               onOpenHotline={() => setIsHotlineOpen(true)}
               onOpenLogin={() => setIsLoginOpen(true)}
@@ -598,7 +598,7 @@ const [viewMode, setViewMode] = useState(() => {
             onSwitchToDashboard={() => { if (canUseAdminDashboard(currentUser)) setViewMode('dashboard'); }}
             onSwitchToPengaduan={() => { setViewMode('pengaduan'); setActiveTab('pengaduan'); }}
             onSwitchToPanti={() => { setViewMode('panti'); setActiveTab('panti'); }}
-            onSwitchToDonasi={() => { setViewMode('donasi'); setActiveTab('donasi'); }}
+            onSwitchToDonasi={() => { if (!isLoggedIn) { setIsLoginOpen(true); return; } setViewMode('donasi'); setActiveTab('donasi'); }}
             onSwitchToAdopsi={() => { setViewMode('adopsi'); setActiveTab('adopsi'); }}
             onSwitchToVolunteer={() => { setViewMode('volunteer'); setActiveTab('volunteer'); }}
             onOpenLapor={() => { setViewMode('pengaduan'); setActiveTab('pengaduan'); }}
@@ -650,7 +650,7 @@ const [viewMode, setViewMode] = useState(() => {
             onSwitchToLanding={() => { setViewMode('landing'); setActiveTab('beranda'); }}
             onSwitchToPengaduan={() => { setViewMode('pengaduan'); setActiveTab('pengaduan'); }}
             onSwitchToPanti={() => { setViewMode('panti'); setActiveTab('panti'); }}
-            onSwitchToDonasi={() => { setViewMode('donasi'); setActiveTab('donasi'); }}
+            onSwitchToDonasi={() => { if (!isLoggedIn) { setIsLoginOpen(true); return; } setViewMode('donasi'); setActiveTab('donasi'); }}
             onSwitchToAdopsi={() => { setViewMode('adopsi'); setActiveTab('adopsi'); }}
             onSwitchToDashboard={() => { if (canUseAdminDashboard(currentUser)) setViewMode('dashboard'); }}
             onOpenLapor={() => { setViewMode('pengaduan'); setActiveTab('pengaduan'); }}
@@ -666,6 +666,7 @@ const [viewMode, setViewMode] = useState(() => {
           <MobileBottomNav 
             activeTab={activeTab}
             viewMode={viewMode}
+            isLoggedIn={isLoggedIn}
             onNavigate={(newMode, newTab) => {
               // Workspace tidak boleh dibuka hanya melalui navigasi UI.
               if (newMode === 'dashboard' && !canUseAdminDashboard(currentUser)) return;
@@ -754,6 +755,7 @@ const [viewMode, setViewMode] = useState(() => {
             <MobileBottomNav 
               activeTab={activeTab}
               viewMode={viewMode}
+              isLoggedIn={isLoggedIn}
               onNavigate={(newMode, newTab) => {
                 // User Publik tidak dapat berpindah ke mode Workspace lewat navigasi.
                 if (newMode === 'dashboard' && !canUseAdminDashboard(currentUser)) return;

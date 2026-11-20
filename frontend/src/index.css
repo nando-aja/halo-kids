@@ -326,12 +326,78 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
-/* Direktori Panti responsive cards grid */
+/* Direktori panti di landing page: grid desktop tetap, slider hanya pada layar sempit. */
+.panti-directory-scroll-hint {
+  display: none;
+}
+
+.panti-directory-track {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.panti-directory-track > .panti-card-hover {
+  min-width: 0;
+}
+
+.panti-directory-track > .panti-directory-message {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.panti-directory-track.is-message {
+  display: block;
+  overflow: visible;
+}
+
+@media (max-width: 1024px) {
+  .panti-directory-track:not(.is-message) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .panti-directory-scroll-hint {
+    display: block;
+    margin: -0.6rem 0 0.65rem;
+    color: #64748b;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .panti-directory-track:not(.is-message) {
+    grid-auto-flow: column;
+    grid-auto-columns: 82%;
+    grid-template-columns: none;
+    gap: 0.85rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.25rem 0.25rem 1rem;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 0.25rem;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .panti-directory-track:not(.is-message) > .panti-card-hover {
+    scroll-snap-align: start;
+  }
+
+  .panti-directory-track.is-single {
+    grid-auto-columns: 100%;
+  }
+}
+
+/* Grid ini dipakai juga oleh halaman direktori dan donasi; pertahankan perilaku aslinya. */
 .panti-cards-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 1.5rem;
 }
+
 @media (max-width: 640px) {
   .panti-cards-grid {
     grid-template-columns: 1fr !important;

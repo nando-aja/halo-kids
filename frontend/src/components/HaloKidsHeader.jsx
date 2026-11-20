@@ -306,7 +306,7 @@ export default function HaloKidsHeader({
               </span>
             </div>
             <p className="text-[11px] text-slate-500 font-medium m-0 leading-tight">
-              Pemerintah Kabupaten • Layanan Sosial Terpadu
+              Layanan Sosial Terpadu yang Diawasi oleh Dinas Sosial setempat
             </p>
           </div>
         </div>

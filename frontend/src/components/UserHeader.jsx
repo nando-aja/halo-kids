@@ -33,7 +33,7 @@ export default function UserHeader({
       case 'beranda':
       default:
         return {
-          title: isLoggedIn ? 'Dashboard Personal Warga' : 'Portal Informasi Terpadu HaloKids DINSOS',
+          title: isLoggedIn ? 'Dashboard Personal Warga' : 'Portal Informasi Terpadu HaloKids Layanan Sosial',
           badge: isLoggedIn ? 'Warga Terverifikasi' : 'Pemerintah Kabupaten'
         };
     }

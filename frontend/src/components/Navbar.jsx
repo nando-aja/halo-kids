@@ -97,7 +97,7 @@ export default function Navbar({
               </span>
             </div>
             <p style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: '500', margin: 0 }}>
-              Pemerintah Kabupaten • Layanan Sosial Terpadu
+              Layanan Sosial Terpadu yang Diawasi oleh Dinas Sosial setempat
             </p>
           </div>
         </div>

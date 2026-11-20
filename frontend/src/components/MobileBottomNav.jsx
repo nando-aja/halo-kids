@@ -12,11 +12,12 @@ import {
  * Dikhususkan untuk layar HP / Tablet (< 900px / lg:hidden)
  * - Posisi fixed di bawah layar yang mudah dijangkau jempol
  * - Desain glassmorphism elegan dengan feedback tap yang halus
- * - Item utama: Beranda, Pengaduan, Donasi, Direktori Panti, dan Menu Drawer
+ * - Donasi hanya ditampilkan untuk pengguna yang sudah login
  */
 export default function MobileBottomNav({
   activeTab = 'beranda',
   viewMode = 'landing',
+  isLoggedIn = false,
   onNavigate = () => {},
   onToggleSidebar = () => {}
 }) {
@@ -35,18 +36,21 @@ export default function MobileBottomNav({
       badge: '24 Jam'
     },
     {
-      id: 'donasi',
-      mode: 'donasi',
-      label: 'Donasi',
-      icon: Heart
-    },
-    {
       id: 'panti',
       mode: 'panti',
       label: 'Direktori',
       icon: Building2
     }
   ];
+
+  if (isLoggedIn) {
+    navItems.splice(2, 0, {
+      id: 'donasi',
+      mode: 'donasi',
+      label: 'Donasi',
+      icon: Heart,
+    });
+  }
 
   const isCurrentActive = (item) => {
     return activeTab === item.id || viewMode === item.mode;

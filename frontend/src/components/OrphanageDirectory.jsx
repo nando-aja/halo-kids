@@ -213,11 +213,17 @@ export default function OrphanageDirectory({
         </div>
 
         {/* DAFTAR KARTU PANTI */}
-        <div className="grid-3">
+        {!isLoading && !loadError && filteredPanti.length > 1 && (
+          <p className="panti-directory-scroll-hint">
+            Geser ke samping untuk melihat panti lainnya <span aria-hidden="true">→</span>
+          </p>
+        )}
+        <div className={`panti-directory-track${isLoading || loadError || filteredPanti.length === 0 ? ' is-message' : ''}${filteredPanti.length === 1 ? ' is-single' : ''}`} aria-label="Daftar panti asuhan, geser ke samping untuk melihat panti lainnya" tabIndex={0}>
 
           {/* LOADING */}
           {isLoading && (
             <p
+              className="panti-directory-message"
               style={{
                 color: '#64748b',
                 padding: '2rem',
@@ -232,6 +238,7 @@ export default function OrphanageDirectory({
           {/* ERROR */}
           {!isLoading && loadError && (
             <p
+              className="panti-directory-message"
               style={{
                 color: '#dc2626',
                 padding: '2rem',
@@ -248,6 +255,7 @@ export default function OrphanageDirectory({
             !loadError &&
             filteredPanti.length === 0 && (
               <p
+                className="panti-directory-message"
                 style={{
                   color: '#64748b',
                   padding: '2rem',
