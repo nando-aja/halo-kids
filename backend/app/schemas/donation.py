@@ -76,11 +76,6 @@ class DonationCreate(BaseModel):
 
         else:
 
-            if self.bukti_transfer:
-                raise ValueError(
-                    "Bukti transfer tidak digunakan untuk donasi barang"
-                )
-
             if (
                 self.jumlah_barang is None
                 or self.jumlah_barang <= 0

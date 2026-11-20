@@ -644,14 +644,36 @@ def create_donation(
 
     else:
 
-        if data.bukti_transfer:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    "Bukti transfer tidak digunakan "
-                    "untuk donasi barang"
-                ),
-            )
+        # Bukti barang (foto paket / resi pengiriman) bersifat opsional di API,
+        # tetapi bila dikirim harus berasal dari unggahan akun ini sendiri.
+        goods_proof = (
+            str(data.bukti_transfer or "")
+            .replace("\\", "/")
+            .strip()
+        )
+
+        if goods_proof:
+            if not goods_proof.startswith(
+                f"storage/bukti_transfer/user-{current_user.id}-"
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        "Bukti barang tidak berasal dari "
+                        "unggahan akun yang sedang login"
+                    ),
+                )
+
+            if not stored_file_exists(goods_proof):
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "Bukti barang tidak ditemukan di "
+                        "penyimpanan. Silakan unggah ulang."
+                    ),
+                )
+
+            proof_path = goods_proof
 
         wishlist = None
 

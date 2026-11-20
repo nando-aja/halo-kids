@@ -127,6 +127,7 @@ export default function DonationProofReview({
     : [];
 
   const isPending = donation.status === 'menunggu';
+  const isGoods = donation.jenis === 'barang';
 
 
   const formatNominal = (value) => {
@@ -187,7 +188,7 @@ export default function DonationProofReview({
                 margin: 0
               }}
             >
-              Review Bukti Transfer Donasi
+              {isGoods ? 'Review Bukti Barang Donasi' : 'Review Bukti Transfer Donasi'}
             </h2>
 
             <span
@@ -252,7 +253,7 @@ export default function DonationProofReview({
                   marginRight: '0.4rem'
                 }}
               />
-              Bukti Pembayaran
+              {isGoods ? 'Bukti Barang / Resi Pengiriman' : 'Bukti Pembayaran'}
             </h3>
 
             <div
@@ -274,12 +275,12 @@ export default function DonationProofReview({
                 </p>
               ) : !previewUrl ? (
                 <p style={{ color: '#64748b' }}>
-                  Bukti transfer tidak tersedia.
+                  {isGoods ? 'Bukti barang tidak tersedia.' : 'Bukti transfer tidak tersedia.'}
                 </p>
               ) : previewType.startsWith('image/') ? (
                 <img
                   src={previewUrl}
-                  alt="Bukti transfer donasi"
+                  alt={isGoods ? 'Bukti barang donasi' : 'Bukti transfer donasi'}
                   style={{
                     width: '100%',
                     height: 'auto',
@@ -362,7 +363,7 @@ export default function DonationProofReview({
                 ['Nomor transaksi', `DNS-${donation.rawId}`],
                 ['Donatur', donation.donor],
                 ['Panti tujuan', donation.panti],
-                ['Nominal pengajuan', donation.amount],
+                [isGoods ? 'Barang diajukan' : 'Nominal pengajuan', donation.amount],
                 ['Tanggal', donation.date]
               ].map(([label, value]) => (
                 <div
@@ -393,7 +394,28 @@ export default function DonationProofReview({
             </div>
 
 
-            {/* AI RESULT */}
+            {/* AI RESULT (hanya donasi uang) / CATATAN (donasi barang) */}
+            {isGoods ? (
+              <div
+                style={{
+                  border: '1px solid #bfdbfe',
+                  background: '#eff6ff',
+                  borderRadius: '12px',
+                  padding: '1rem',
+                  fontSize: '0.8rem',
+                  color: '#1e3a8a',
+                  lineHeight: 1.5
+                }}
+              >
+                <strong>Pemeriksaan manual</strong>
+                <p style={{ margin: '0.4rem 0 0' }}>
+                  Analisis AI membaca nominal transfer sehingga tidak berlaku untuk
+                  donasi barang. Periksa foto paket atau resi pengiriman di samping,
+                  lalu setujui bila sesuai dengan barang yang diajukan.
+                </p>
+              </div>
+            ) : (
+              <div>
             <div
               style={{
                 border: '1px solid #c7d2fe',
@@ -538,6 +560,9 @@ export default function DonationProofReview({
               </p>
             </div>
 
+
+              </div>
+            )}
 
             {/* FINAL STATUS */}
             <div

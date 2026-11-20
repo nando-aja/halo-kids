@@ -144,3 +144,44 @@ def test_public_statistics_endpoint_is_registered_and_returns_data_shape():
         assert body["anak_dalam_rehabilitasi"] is None
     finally:
         app.dependency_overrides.clear()
+
+
+def test_goods_donation_accepts_own_proof_and_rejects_foreign_proof():
+    client, panti_id, wishlist_id = _setup_client()
+    try:
+        donor = _login(client, "donor@halo.test", "Donor12345")
+
+        upload = client.post(
+            "/api/upload/bukti-transfer",
+            headers=donor,
+            files={"file": ("paket.png", b"\x89PNG\r\n\x1a\n" + b"0" * 64, "image/png")},
+        )
+        assert upload.status_code == 200, upload.text
+        proof = upload.json()["bukti_transfer"]
+
+        payload = {
+            "id_panti": panti_id,
+            "jenis_donasi": "barang",
+            "id_wishlist": wishlist_id,
+            "jumlah_barang": 2,
+            "satuan_barang": "kg",
+            "estimasi_waktu_antar": "2026-10-10",
+        }
+
+        created = client.post(
+            "/api/masyarakat/donasi",
+            headers=donor,
+            json={**payload, "bukti_transfer": proof},
+        )
+        assert created.status_code == 201, created.text
+        assert created.json()["bukti_transfer"] == proof
+
+        # Bukti milik user lain tidak boleh dipakai.
+        foreign = client.post(
+            "/api/masyarakat/donasi",
+            headers=donor,
+            json={**payload, "bukti_transfer": "storage/bukti_transfer/user-9999-x.png"},
+        )
+        assert foreign.status_code == 403
+    finally:
+        app.dependency_overrides.clear()

@@ -38,20 +38,17 @@ def test_money_donation_requires_positive_nominal_and_proof_can_be_checked_elsew
     assert data.jumlah_nominal == Decimal("100000")
 
 
-def test_goods_donation_rejects_transfer_proof():
-    try:
-        DonationCreate(
-            id_panti=1,
-            jenis_donasi="barang",
-            nama_barang="Beras",
-            jumlah_barang=5,
-            satuan_barang="kg",
-            estimasi_waktu_antar=date(2026, 10, 10),
-            bukti_transfer="storage/bukti_transfer/x.png",
-        )
-    except ValidationError:
-        return
-    raise AssertionError("Donasi barang seharusnya menolak bukti transfer")
+def test_goods_donation_accepts_proof_of_goods():
+    data = DonationCreate(
+        id_panti=1,
+        jenis_donasi="barang",
+        nama_barang="Beras",
+        jumlah_barang=5,
+        satuan_barang="kg",
+        estimasi_waktu_antar=date(2026, 10, 10),
+        bukti_transfer="storage/bukti_transfer/x.png",
+    )
+    assert data.bukti_transfer == "storage/bukti_transfer/x.png"
 
 
 def test_emergency_and_normal_report_are_distinguished():

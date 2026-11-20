@@ -80,6 +80,8 @@ const [qrisImageError, setQrisImageError] = useState(false);
   const [showPackageReceiptModal, setShowPackageReceiptModal] = useState(false);
   const [packageReceiptCode, setPackageReceiptCode] = useState('');
   const [estimasiTanggal, setEstimasiTanggal] = useState('');
+  // Bukti barang (foto paket / resi pengiriman) yang diunggah donatur.
+  const [goodsProofFile, setGoodsProofFile] = useState(null);
   const [catatanPengiriman, setCatatanPengiriman] = useState('');
   const [apiPantiList, setApiPantiList] = useState([]);
   const [dynamicPantiGoodsList, setDynamicPantiGoodsList] = useState([]);
@@ -385,9 +387,26 @@ const handleProofSubmit = async (e) => {
       alert('Pilih minimal 1 barang yang akan Anda kirimkan.');
       return;
     }
+    if (!goodsProofFile) {
+      alert('Unggah bukti barang (foto paket atau resi pengiriman) terlebih dahulu.');
+      return;
+    }
+    if (!['image/jpeg', 'image/png', 'application/pdf'].includes(goodsProofFile.type)) {
+      alert('Format bukti barang harus JPG, PNG, atau PDF.');
+      return;
+    }
+    if (goodsProofFile.size > 10 * 1024 * 1024) {
+      alert('Ukuran bukti barang maksimal 10 MB.');
+      return;
+    }
     setIsSubmitting(true);
     try {
       const eta = estimasiTanggal || new Date().toISOString().slice(0, 10);
+      // Satu bukti diunggah sekali, lalu dilampirkan ke setiap barang dalam paket ini.
+      const uploadResult = await donasiService.uploadBuktiTransfer(goodsProofFile);
+      if (!uploadResult?.bukti_transfer) {
+        throw new Error('Server tidak mengembalikan lokasi bukti barang.');
+      }
       for (const [wishlistId, qty] of entries) {
         await donasiService.createDonasi({
           id_panti: selectedPanti.id,
@@ -395,9 +414,11 @@ const handleProofSubmit = async (e) => {
           jenis_donasi: 'barang',
           jumlah_barang: Number(qty),
           satuan_barang: 'Unit',
-          estimasi_waktu_antar: eta
+          estimasi_waktu_antar: eta,
+          bukti_transfer: uploadResult.bukti_transfer
         });
       }
+      setGoodsProofFile(null);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('halokids:data_updated', { detail: { type: 'donasi' } }));
       }
@@ -1062,6 +1083,40 @@ const handleProofSubmit = async (e) => {
                           style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none', background: '#fff' }}
                         />
                       </div>
+                    </div>
+
+                    {/* Bukti Barang */}
+                    <div>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '0.35rem' }}>
+                        Bukti Barang / Resi Pengiriman <span style={{ color: '#dc2626' }}>*</span>
+                      </label>
+                      <label
+                        htmlFor="goods-proof-file"
+                        style={{ display: 'block', border: '2px dashed #93c5fd', background: '#eff6ff', borderRadius: '10px', padding: '1rem', textAlign: 'center', cursor: 'pointer', fontSize: '0.85rem', color: '#1d4ed8', fontWeight: 700 }}
+                      >
+                        {goodsProofFile ? `📎 ${goodsProofFile.name}` : 'Klik untuk unggah foto paket atau resi pengiriman'}
+                        <span style={{ display: 'block', fontSize: '0.72rem', color: '#64748b', fontWeight: 500, marginTop: '0.25rem' }}>
+                          JPG, PNG atau PDF — maksimal 10 MB
+                        </span>
+                      </label>
+                      <input
+                        id="goods-proof-file"
+                        type="file"
+                        accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
+                        disabled={isSubmitting}
+                        onChange={(e) => setGoodsProofFile(e.target.files?.[0] || null)}
+                        style={{ display: 'none' }}
+                      />
+                      {goodsProofFile && (
+                        <button
+                          type="button"
+                          onClick={() => setGoodsProofFile(null)}
+                          disabled={isSubmitting}
+                          style={{ marginTop: '0.4rem', border: 'none', background: 'transparent', color: '#dc2626', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                        >
+                          Hapus file
+                        </button>
+                      )}
                     </div>
 
                     {/* Submit Action */}
