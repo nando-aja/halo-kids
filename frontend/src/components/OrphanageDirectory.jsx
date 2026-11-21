@@ -142,13 +142,6 @@ export default function OrphanageDirectory({
           }}
         >
           <div>
-            <span
-              className="badge badge-brand"
-              style={{ marginBottom: '0.5rem' }}
-            >
-              LEMBAGA KESEJAHTERAAN SOSIAL ANAK (LKSA)
-            </span>
-
             <h2
               style={{
                 fontSize: 'clamp(1.6rem, 3vw, 2.2rem)',

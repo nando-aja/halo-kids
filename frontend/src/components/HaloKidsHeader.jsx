@@ -301,9 +301,6 @@ export default function HaloKidsHeader({
               <span className="text-xl font-extrabold text-[#0b1f5c] tracking-tight leading-none font-heading">
                 HaloKids
               </span>
-              <span className="bg-[#1e40af] text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded tracking-wider whitespace-nowrap">
-                LAYANAN SOSIAL TERPADU
-              </span>
             </div>
             <p className="text-[11px] text-slate-500 font-medium m-0 leading-tight">
               Layanan Sosial Terpadu yang Diawasi oleh Dinas Sosial setempat

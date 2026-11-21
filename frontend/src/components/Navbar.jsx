@@ -83,18 +83,6 @@ export default function Navbar({
               }}>
                 HaloKids
               </span>
-              <span style={{
-                background: '#1e40af',
-                color: '#ffffff',
-                fontSize: '0.65rem',
-                fontWeight: '800',
-                padding: '0.15rem 0.5rem',
-                borderRadius: '6px',
-                letterSpacing: '0.05em',
-                whiteSpace: 'nowrap'
-              }}>
-                LAYANAN SOSIAL TERPADU
-              </span>
             </div>
             <p style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: '500', margin: 0 }}>
               Layanan Sosial Terpadu yang Diawasi oleh Dinas Sosial setempat

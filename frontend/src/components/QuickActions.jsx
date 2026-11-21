@@ -20,7 +20,6 @@ export default function QuickActions({ onOpenLapor, onOpenLacak, onOpenKonsultas
       icon: Megaphone,
       bgIcon: '#fee2e2',
       colorIcon: '#dc2626',
-      badge: 'DARURAT 24/7',
       onClick: onOpenLapor
     },
     {
@@ -30,7 +29,6 @@ export default function QuickActions({ onOpenLapor, onOpenLacak, onOpenKonsultas
       icon: Search,
       bgIcon: '#e0e7ff',
       colorIcon: '#3730a3',
-      badge: 'SINKRONISASI LIVE',
       onClick: onOpenLacak
     },
     {
@@ -85,16 +83,18 @@ export default function QuickActions({ onOpenLapor, onOpenLacak, onOpenKonsultas
                     <IconComp size={24} />
                   </div>
 
-                  <span style={{
-                    fontSize: '0.65rem',
-                    fontWeight: 800,
-                    padding: '0.2rem 0.5rem',
-                    borderRadius: '50px',
-                    background: act.bgIcon,
-                    color: act.colorIcon
-                  }}>
-                    {act.badge}
-                  </span>
+                  {act.badge && (
+                    <span style={{
+                      fontSize: '0.65rem',
+                      fontWeight: 800,
+                      padding: '0.2rem 0.5rem',
+                      borderRadius: '50px',
+                      background: act.bgIcon,
+                      color: act.colorIcon
+                    }}>
+                      {act.badge}
+                    </span>
+                  )}
                 </div>
 
                 <div>

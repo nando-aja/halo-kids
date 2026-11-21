@@ -178,20 +178,6 @@ export default function UserSidebar({
                     >
                       HaloKids
                     </span>
-                    <span
-                      style={{
-                        background: '#1e40af',
-                        color: '#ffffff',
-                        fontSize: '0.575rem',
-                        fontWeight: '800',
-                        padding: '0.12rem 0.45rem',
-                        borderRadius: '6px',
-                        letterSpacing: '0.04em',
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      LAYANAN SOSIAL TERPADU
-                    </span>
                   </div>
                   <p
                     style={{

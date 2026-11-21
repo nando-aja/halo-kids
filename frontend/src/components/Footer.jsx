@@ -421,7 +421,7 @@ export default function Footer() {
                   <Shield size={20} />
                 </div>
                 <span style={{ fontSize: '1.3rem', fontWeight: 800, color: '#ffffff', fontFamily: 'var(--font-heading)' }}>
-                  HaloKids <span style={{ color: '#60a5fa', fontSize: '0.8rem', background: 'rgba(255,255,255,0.1)', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>LAYANAN SOSIAL TERPADU</span>
+                  HaloKids
                 </span>
               </div>
 
