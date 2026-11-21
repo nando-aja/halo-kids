@@ -125,7 +125,7 @@ const INITIAL_GUEST_NOTIFICATIONS = [
 
 export default function HaloKidsHeader({
   isLoggedIn = false,
-  currentUser = { name: 'Warga', role: 'Warga Terverifikasi' },
+  currentUser = { name: 'Warga', role: 'Warga' },
   activeTab = 'beranda',
   onSelectTab = () => {},
   onOpenLacak = () => {},
@@ -503,7 +503,7 @@ export default function HaloKidsHeader({
                       {currentUser?.name || 'Warga'}
                     </p>
                     <p className="text-[10px] text-slate-500">
-                      {currentUser?.role || 'Warga Terverifikasi'}
+                      {currentUser?.role || 'Warga'}
                     </p>
                   </div>
                   <button

@@ -251,11 +251,14 @@ export default function AiAssistant({
             <div className="flex-1 overflow-y-auto p-3 sm:p-5 bg-slate-100">
               {activeTab === 'admin-review' && (
                 <div className="space-y-4">
-                  <section className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-2 text-sm font-bold text-slate-800"><FileText size={17} className="text-blue-700" /> Pengajuan COTA dari database</div>
+                  <section className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-2xs flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wide">
+                      <FileText size={16} className="text-blue-700" />
+                      <span>Pengajuan COTA</span>
+                    </div>
                     <select
                       aria-label="Pilih pengajuan COTA"
-                      className="min-w-[240px] flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+                      className="min-w-[240px] flex-1 rounded-xl border border-slate-300 bg-slate-50/60 hover:bg-white focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 px-3 py-2 text-xs font-semibold text-slate-800 transition outline-none"
                       value={selectedApplicationId}
                       onChange={(event) => setSelectedApplicationId(event.target.value)}
                       disabled={isLoadingApplications || applications.length === 0}
@@ -267,8 +270,14 @@ export default function AiAssistant({
                         </option>
                       ))}
                     </select>
-                    <button type="button" onClick={() => loadApplications(true)} disabled={isLoadingApplications || isRefreshing} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">
-                      <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} /> Muat ulang
+                    <button
+                      type="button"
+                      onClick={() => loadApplications(true)}
+                      disabled={isLoadingApplications || isRefreshing}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 active:scale-95 px-3.5 py-2 text-xs font-bold text-slate-700 transition shadow-2xs disabled:opacity-50"
+                    >
+                      <RefreshCw size={14} className={isRefreshing ? 'animate-spin text-blue-700' : 'text-slate-600'} />
+                      <span>Muat ulang</span>
                     </button>
                   </section>
 

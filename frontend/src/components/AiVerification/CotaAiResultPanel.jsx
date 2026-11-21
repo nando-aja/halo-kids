@@ -167,12 +167,27 @@ function Badge({ tone, children }) {
   );
 }
 
-function Tile({ label, value, sub }) {
+function Tile({ label, value, sub, tone = 'default' }) {
+  const valueColor =
+    tone === 'danger'
+      ? 'text-rose-600'
+      : tone === 'warning'
+      ? 'text-amber-600'
+      : tone === 'success'
+      ? 'text-emerald-700'
+      : 'text-slate-900';
+
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3">
-      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="mt-1 text-xl font-black text-slate-900">{value}</div>
-      {sub && <div className="text-[10px] text-slate-500">{sub}</div>}
+    <div className="min-h-[82px] flex flex-col justify-between rounded-xl border border-slate-200/90 bg-slate-50/70 p-3 hover:bg-white hover:border-slate-300 transition-all shadow-2xs">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</div>
+      <div className="mt-1">
+        <div className={`text-xl font-black tracking-tight ${valueColor}`}>{value}</div>
+        {sub ? (
+          <div className="text-[10px] text-slate-500 leading-tight mt-0.5">{sub}</div>
+        ) : (
+          <div className="text-[10px] text-transparent select-none leading-tight mt-0.5">-</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -231,21 +246,34 @@ export default function CotaAiResultPanel({ result, onSelectDocument, selectedDo
       )}
 
       {/* Angka ringkas */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
         <Tile label="Dokumen diperiksa" value={summary.checked} />
-        <Tile label="Berkas ditemukan" value={`${summary.found}/${summary.checked}`} />
-        <Tile label="Teks terbaca" value={summary.readable} sub="dokumen berisi teks" />
-        <Tile label="Temuan AI" value={summary.anomalies.length} />
+        <Tile
+          label="Berkas ditemukan"
+          value={`${summary.found}/${summary.checked}`}
+          tone={summary.found === summary.checked ? 'success' : 'warning'}
+        />
+        <Tile
+          label="Teks terbaca"
+          value={summary.readable}
+          sub="dokumen berisi teks"
+          tone={summary.readable > 0 ? 'default' : 'warning'}
+        />
+        <Tile
+          label="Temuan AI"
+          value={summary.anomalies.length}
+          tone={summary.anomalies.length > 0 ? 'warning' : 'success'}
+        />
       </div>
-      <div className="rounded-xl border border-slate-200 bg-white p-3">
-        <div className="flex items-center justify-between text-[11px]">
+      <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-3.5 shadow-2xs">
+        <div className="flex items-center justify-between text-xs">
           <span className="font-bold text-slate-700">Skor keterbacaan dokumen</span>
           <span className="font-black text-slate-900">{summary.percent == null ? '—' : `${summary.percent}%`}</span>
         </div>
-        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-          <div className={`h-full ${barColor} transition-all`} style={{ width: `${summary.percent ?? 0}%` }} />
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200/70">
+          <div className={`h-full ${barColor} transition-all duration-300`} style={{ width: `${summary.percent ?? 0}%` }} />
         </div>
-        <p className="mt-1.5 text-[10px] text-slate-500">
+        <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">
           Persentase dokumen yang berkasnya ditemukan, teksnya terbaca, dan isinya sesuai jenis dokumen. Ini bukan skor akurasi OCR.
         </p>
       </div>

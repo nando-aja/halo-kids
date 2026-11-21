@@ -145,7 +145,9 @@ export default function AdminDocumentReview({
     const supporting = selectedApplicant.dokumen_pendukung;
     if (supporting && typeof supporting === 'object' && !Array.isArray(supporting)) {
       Object.entries(supporting).forEach(([key, path]) => {
-        add(key, key.replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()), path);
+        let label = key.replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+        if (key.toLowerCase() === 'skck') label = 'SKCK';
+        add(key, label, path);
       });
     } else if (Array.isArray(supporting)) {
       supporting.forEach((path, index) => {
@@ -509,10 +511,10 @@ export default function AdminDocumentReview({
     >
       {/* ----------------- TOP BAR: DOCUMENT SWITCHER & STATUS SUMMARY (FIXED AT TOP) ----------------- */}
       <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white p-4 sm:p-5 border-b border-blue-950/40 shrink-0 relative">
-        <div className={`flex flex-col lg:flex-row lg:items-center justify-between gap-3 ${isModal ? 'pr-12' : ''}`}>
-          {/* Left Title & Badge */}
-          <div className="flex items-center gap-2.5">
-            <span className="p-1.5 rounded-lg bg-blue-500/20 text-blue-300 ring-1 ring-blue-400/30">
+        <div className="flex items-center justify-between gap-3">
+          {/* Left Title & Info */}
+          <div className="flex items-center gap-3">
+            <span className="p-2 rounded-xl bg-blue-500/20 text-cyan-300 ring-1 ring-cyan-400/30">
               <Bot size={22} className="text-cyan-400" />
             </span>
             <div>
@@ -531,15 +533,30 @@ export default function AdminDocumentReview({
             </div>
           </div>
 
-          {/* Untuk pengajuan nyata, daftar tombol berasal dari dokumen yang tersimpan di database. */}
+          {/* Prominent Close Button (X) at Top Right Corner */}
+          {isModal && (
+            <button
+              type="button"
+              onClick={handleCloseModal}
+              aria-label="Tutup Pop-up"
+              title="Tutup (ESC)"
+              className="w-9 h-9 rounded-full bg-white/15 hover:bg-rose-600 text-white flex items-center justify-center transition-all duration-200 shadow-md ring-1 ring-white/20 hover:scale-105 active:scale-95 group shrink-0"
+            >
+              <X size={20} className="group-hover:rotate-90 transition-transform duration-200" />
+            </button>
+          )}
+        </div>
+
+        {/* Dedicated Horizontal Document Switcher Bar */}
+        <div className="mt-3.5 pt-3 border-t border-white/10 flex items-center gap-2 overflow-x-auto pb-1">
           {selectedApplicant?.rawId ? (
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            <>
               {actualDocuments.map((doc) => (
                 <button
                   key={doc.key}
                   type="button"
                   onClick={() => setSelectedActualDocKey(doc.key)}
-                  className={`text-xs px-2.5 sm:px-3 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5 sm:gap-2 border ${
+                  className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-2 border whitespace-nowrap shrink-0 ${
                     selectedActualDoc?.key === doc.key
                       ? 'bg-white text-blue-950 font-bold shadow-md border-white ring-2 ring-cyan-400'
                       : 'bg-white/10 text-white/90 hover:bg-white/20 border-white/15'
@@ -550,9 +567,9 @@ export default function AdminDocumentReview({
                 </button>
               ))}
               {actualDocuments.length === 0 && <span className="text-[11px] text-blue-100">Tidak ada path dokumen pada record ini.</span>}
-            </div>
+            </>
           ) : (
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            <>
               {docList.map((doc) => {
                 const isSelected = doc.id === activeDoc.id;
                 const isDocManual = doc.status === 'menunggu_tinjauan_manual';
@@ -562,25 +579,21 @@ export default function AdminDocumentReview({
                     key={doc.id}
                     type="button"
                     onClick={() => handleSelectDoc(doc.id)}
-                    className={`text-xs px-2.5 sm:px-3 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5 sm:gap-2 border ${
+                    className={`text-xs px-3.5 py-1.5 rounded-xl font-medium transition-all flex items-center gap-2 border whitespace-nowrap shrink-0 ${
                       isSelected ? 'bg-white text-blue-950 font-bold shadow-md border-white ring-2 ring-cyan-400' : 'bg-white/10 text-white/90 hover:bg-white/20 border-white/15'
                     }`}
                   >
                     <FileText size={14} className={isSelected ? 'text-blue-700' : 'text-cyan-300'} />
-                    <span className="truncate max-w-[120px] sm:max-w-[140px]">{doc.nama_dokumen}</span>
+                    <span>{doc.nama_dokumen}</span>
                     {isDocOk && <span className="w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-emerald-950" title="Diverifikasi" />}
                     {isDocManual && <span className="w-2 h-2 rounded-full bg-amber-400 ring-2 ring-amber-950" title="Perlu Review" />}
                   </button>
                 );
               })}
-            </div>
+            </>
           )}
         </div>
-
-        {/* Prominent Close Button (X) at Top Right Corner */}
-        {isModal && (
-          <button
-            type="button"
+      </div>
             onClick={handleCloseModal}
             aria-label="Tutup Pop-up"
             title="Tutup (ESC)"

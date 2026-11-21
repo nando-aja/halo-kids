@@ -34,7 +34,7 @@ export default function UserHeader({
       default:
         return {
           title: isLoggedIn ? 'Dashboard Personal Warga' : 'Portal Informasi Terpadu HaloKids Layanan Sosial',
-          badge: isLoggedIn ? 'Warga Terverifikasi' : 'Pemerintah Kabupaten'
+          badge: isLoggedIn ? 'Warga' : 'Pemerintah Kabupaten'
         };
     }
   };
