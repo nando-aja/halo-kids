@@ -24,7 +24,6 @@ export default function HeroSection({
     {
       id: 'info',
       tab: 'Tentang HaloKids',
-      badge: { icon: ShieldCheck, text: 'PORTAL PELINDUNGAN TERPADU • DINAS SOSIAL KABUPATEN', tone: 'blue' },
       title: 'Bersama Lindungi',
       titleAccent: 'Masa Depan Anak Indonesia',
       accent: 'linear-gradient(135deg, #1d4ed8 0%, #0284c7 100%)',
@@ -47,7 +46,6 @@ export default function HeroSection({
     {
       id: 'adopsi',
       tab: 'Adopsi Anak',
-      badge: { icon: UserCheck, text: 'ADOPSI RESMI • PENGAJUAN COTA', tone: 'green' },
       title: 'Siap Menjadi Orang Tua?',
       titleAccent: 'Ajukan Adopsi Resmi',
       accent: 'linear-gradient(135deg, #15803d 0%, #0d9488 100%)',
@@ -72,7 +70,6 @@ export default function HeroSection({
     {
       id: 'lapor',
       tab: 'Lapor Kekerasan',
-      badge: { icon: Megaphone, text: 'LAPOR KEKERASAN ANAK • 24/7', tone: 'red' },
       title: 'Melihat Anak Disakiti?',
       titleAccent: 'Jangan Diam, Laporkan',
       accent: 'linear-gradient(135deg, #dc2626 0%, #be123c 100%)',
@@ -99,7 +96,6 @@ export default function HeroSection({
     {
       id: 'donasi',
       tab: 'Donasi',
-      badge: { icon: HandHeart, text: 'DONASI UANG & BARANG • TRANSPARAN', tone: 'amber' },
       title: 'Ingin Berbagi Kebaikan?',
       titleAccent: 'Donasi Uang atau Barang',
       accent: 'linear-gradient(135deg, #d97706 0%, #ea580c 100%)',
@@ -124,7 +120,6 @@ export default function HeroSection({
     {
       id: 'panti',
       tab: 'Daftar Panti',
-      badge: { icon: Building2, text: 'MITRA LKSA • PENGELOLA PANTI', tone: 'blue' },
       title: 'Sudah Punya Panti?',
       titleAccent: 'Buat Akun Panti Anda',
       accent: 'linear-gradient(135deg, #1d4ed8 0%, #4f46e5 100%)',
@@ -168,12 +163,6 @@ export default function HeroSection({
     if (Math.abs(dx) > 50) goTo(index + (dx < 0 ? 1 : -1));
   };
 
-  const badgeTones = {
-    blue:  { bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
-    green: { bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' },
-    red:   { bg: '#fef2f2', color: '#b91c1c', border: '#fecaca' },
-    amber: { bg: '#fffbeb', color: '#b45309', border: '#fde68a' }
-  };
 
   return (
     <section
@@ -212,8 +201,6 @@ export default function HeroSection({
          >
           {slides.map((s, i) => {
             const active = i === index;
-            const BadgeIcon = s.badge.icon;
-            const tone = badgeTones[s.badge.tone];
             const NoteIcon = s.note?.icon;
             const TagIcon = s.tag.icon;
             const StatIcon = s.stat.icon;
@@ -232,19 +219,6 @@ export default function HeroSection({
                 <div className="hero-grid">
                   {/* Kolom kiri: teks */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                    <div>
-                      <span className="badge badge-brand" style={{
-                        fontSize: '0.725rem',
-                        padding: '0.35rem 0.85rem',
-                        background: tone.bg,
-                        color: tone.color,
-                        border: `1px solid ${tone.border}`
-                      }}>
-                        <BadgeIcon size={14} color={tone.color} />
-                        {s.badge.text}
-                      </span>
-                    </div>
-
                     <h1 style={{
                       fontSize: 'clamp(2.2rem, 4vw, 3.2rem)',
                       fontWeight: 800,

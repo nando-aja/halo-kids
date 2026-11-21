@@ -219,24 +219,6 @@ export default function CotaAiResultPanel({ result, onSelectDocument, selectedDo
 
   return (
     <div className="space-y-4">
-      {/* Keputusan ringkas */}
-      <div className={`rounded-xl border p-4 ${needsReview ? 'border-amber-300 bg-amber-50' : 'border-emerald-300 bg-emerald-50'}`}>
-        <div className="flex items-start gap-3">
-          {needsReview ? <AlertTriangle size={22} className="mt-0.5 shrink-0 text-amber-600" /> : <CheckCircle2 size={22} className="mt-0.5 shrink-0 text-emerald-600" />}
-          <div className="text-xs">
-            <h4 className={`text-sm font-black ${needsReview ? 'text-amber-900' : 'text-emerald-900'}`}>
-              {needsReview ? 'Perlu tinjauan manual' : 'AI tidak menemukan anomali'}
-            </h4>
-            <p className={`mt-1 leading-relaxed ${needsReview ? 'text-amber-800' : 'text-emerald-800'}`}>
-              {needsReview
-                ? `AI menandai ${summary.anomalies.length} temuan di bawah. Periksa berkas asli sebelum memutuskan.`
-                : 'Semua berkas yang diperiksa terbaca dan sesuai data pengajuan.'}{' '}
-              AI hanya alat bantu; keputusan akhir tetap di tangan petugas Dinsos.
-            </p>
-          </div>
-        </div>
-      </div>
-
       {allMissing && (
         <div role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-xs text-rose-900">
           <strong className="block text-sm">Tidak ada satu pun berkas fisik yang ditemukan</strong>

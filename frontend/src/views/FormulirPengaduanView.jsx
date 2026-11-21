@@ -231,15 +231,6 @@ export default function FormulirPengaduanView({
             </div>
 
             <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
-                <span style={{ background: '#1e40af', color: '#ffffff', fontSize: '0.65rem', fontWeight: 800, padding: '0.2rem 0.6rem', borderRadius: '4px', letterSpacing: '0.05em' }}>
-                  KODE TIKET OTOMATIS
-                </span>
-                <span style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', fontSize: '0.725rem', fontWeight: 700, padding: '0.18rem 0.65rem', borderRadius: '50px' }}>
-                  Respon Cepat TRC &lt; 2 Jam
-                </span>
-              </div>
-              
               <h1 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0b1f5c', margin: '0 0 0.2rem 0', fontFamily: 'var(--font-heading)' }}>
                 Formulir Pengaduan Pelindungan Anak Terpadu
               </h1>

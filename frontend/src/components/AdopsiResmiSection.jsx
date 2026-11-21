@@ -48,13 +48,6 @@ export default function AdopsiResmiSection({ onOpenAdopsi }) {
 
         {/* Section Header */}
         <div style={{ textAlign: 'center', maxWidth: '780px', margin: '0 auto 3rem auto' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: '#eff6ff', border: '1px solid #bfdbfe', padding: '0.35rem 0.85rem', borderRadius: '50px', marginBottom: '0.85rem' }}>
-            <Heart size={16} color="#1d4ed8" fill="#1d4ed8" />
-            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#1d4ed8', letterSpacing: '0.05em' }}>
-              PROSEDUR RESMI COTA • DINAS SOSIAL KABUPATEN
-            </span>
-          </div>
-
           <h2 style={{
             fontSize: 'clamp(1.8rem, 3vw, 2.6rem)',
             fontWeight: 800,
@@ -196,12 +189,8 @@ export default function AdopsiResmiSection({ onOpenAdopsi }) {
                 borderRadius: '10px',
                 padding: '0.85rem',
                 fontSize: '0.8rem',
-                color: '#15803d',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem'
+                color: '#15803d'
               }}>
-                <Sparkles size={18} color="#16a34a" style={{ flexShrink: 0 }} />
                 <span>
                   <strong>AI OCR Agent:</strong> Otomatis mencocokkan data KTP/KK ke format Pydantic JSON schema database Dinsos.
                 </span>
@@ -316,10 +305,7 @@ export default function AdopsiResmiSection({ onOpenAdopsi }) {
         }} className="adopsi-cta-grid">
 
           <div>
-            <span style={{ background: 'rgba(255,255,255,0.15)', color: '#bfdbfe', fontSize: '0.7rem', fontWeight: 800, padding: '0.25rem 0.65rem', borderRadius: '50px', textTransform: 'uppercase' }}>
-              Simulasi Cepat COTA
-            </span>
-            <h3 style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0.5rem 0 0.4rem 0', color: '#ffffff' }}>
+            <h3 style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0 0 0.4rem 0', color: '#ffffff' }}>
               Ingin Mengajukan Adopsi Anak Legal Secara Resmi?
             </h3>
             <p style={{ fontSize: '0.875rem', color: '#bfdbfe', margin: 0, lineHeight: 1.5 }}>
@@ -375,8 +361,8 @@ export default function AdopsiResmiSection({ onOpenAdopsi }) {
             flexDirection: 'column',
             gap: '1rem'
           }}>
-            <h4 style={{ fontSize: '0.925rem', fontWeight: 800, margin: 0, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Sparkles size={16} color="#fbbf24" /> Simulasi Kualifikasi COTA Cepat:
+            <h4 style={{ fontSize: '0.925rem', fontWeight: 800, margin: 0, color: '#ffffff' }}>
+              Simulasi Kualifikasi COTA Cepat:
             </h4>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>

@@ -158,9 +158,6 @@ useEffect(() => {
       }}>
         <div className="container" style={{ position: 'relative', zIndex: 2 }}>
           <div style={{ maxWidth: '800px' }}>
-            <span className="badge" style={{ background: '#3b82f6', color: '#ffffff', marginBottom: '0.75rem', padding: '0.35rem 0.85rem', borderRadius: '50px', fontSize: '0.75rem', fontWeight: 800 }}>
-              LEMBAGA KESEJAHTERAAN SOSIAL ANAK (LKSA) RESMI
-            </span>
             <h1 style={{ fontSize: 'clamp(2rem, 4vw, 2.75rem)', fontWeight: 800, margin: '0 0 0.85rem 0', letterSpacing: '-0.02em', color: '#ffffff' }}>
               Direktori Panti Asuhan Terdaftar
             </h1>

@@ -10,7 +10,6 @@ export default function QuickActions({ onOpenLapor, onOpenLacak, onOpenKonsultas
       icon: UserCheck,
       bgIcon: '#dcfce7',
       colorIcon: '#15803d',
-      badge: 'PROSEDUR RESMI',
       onClick: onOpenAdopsi
     },
     {
@@ -38,7 +37,6 @@ export default function QuickActions({ onOpenLapor, onOpenLacak, onOpenKonsultas
       icon: Building2,
       bgIcon: '#dbeafe',
       colorIcon: '#1d4ed8',
-      badge: 'RESMI KEMENSOS',
       onClick: onScrollPanti
     }
   ];

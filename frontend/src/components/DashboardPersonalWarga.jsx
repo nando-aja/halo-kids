@@ -285,9 +285,6 @@ export default function DashboardPersonalWarga({
                 Ringkasan Status Layanan Anda
               </h2>
             </div>
-            <span className="text-xs text-blue-700 font-semibold cursor-default">
-              4 Layanan Terhubung
-            </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">

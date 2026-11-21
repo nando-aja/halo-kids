@@ -477,16 +477,6 @@ export default function AdopsiModal({ isOpen, onClose }) {
                 <h3 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>
                   Modul Adopsi Resmi (Alur COTA)
                 </h3>
-                <span style={{
-                  background: '#22c55e',
-                  color: '#ffffff',
-                  fontSize: '0.65rem',
-                  fontWeight: 800,
-                  padding: '0.15rem 0.5rem',
-                  borderRadius: '20px'
-                }}>
-                  PERMENSOS RI
-                </span>
               </div>
               <p style={{ fontSize: '0.8rem', color: '#bfdbfe', margin: 0, marginTop: '2px' }}>
                 Sistem Informasi Pengajuan &amp; Verifikasi Legalitas Orang Tua Angkat Dinas Sosial
@@ -576,7 +566,7 @@ export default function AdopsiModal({ isOpen, onClose }) {
               boxShadow: activeTab === 'kelayakan' ? '0 2px 8px rgba(0,0,0,0.06)' : 'none'
             }}
           >
-            <Sparkles size={18} color={activeTab === 'kelayakan' ? '#d97706' : '#94a3b8'} /> 2. Cek Kelayakan (Filter)
+            2. Cek Kelayakan (Filter)
           </button>
 
           <button
@@ -648,27 +638,6 @@ export default function AdopsiModal({ isOpen, onClose }) {
           {/* =================================================================== */}
           {activeTab === 'panduan' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-
-              {/* Box Info Banner */}
-              <div style={{
-                background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
-                border: '1px solid #93c5fd',
-                borderRadius: '14px',
-                padding: '1.25rem',
-                display: 'flex',
-                gap: '1rem',
-                alignItems: 'flex-start'
-              }}>
-                <ShieldCheck size={28} color="#1d4ed8" style={{ flexShrink: 0, marginTop: '2px' }} />
-                <div>
-                  <h4 style={{ fontSize: '1rem', fontWeight: 800, color: '#1e40af', margin: 0 }}>
-                    Alur Resmi Pengangkatan Anak (COTA) Berdasarkan Permensos No. 110/HUK/2009
-                  </h4>
-                  <p style={{ fontSize: '0.85rem', color: '#1e3a8a', margin: '4px 0 0 0', lineHeight: 1.5 }}>
-                    Setiap proses adopsi anak wajib melalui pengawasan resmi Dinas Sosial dan penetapan Pengadilan Negeri untuk menjamin keabsahan hukum serta kepentingan terbaik bagi tumbuh kembang anak.
-                  </p>
-                </div>
-              </div>
 
               {/* Syarat Utama Checklist */}
               <div>
@@ -759,24 +728,6 @@ export default function AdopsiModal({ isOpen, onClose }) {
                 </div>
               </div>
 
-              {/* Warning Notice Box */}
-              <div style={{
-                background: '#fffbebf5',
-                border: '1px solid #fde68a',
-                borderRadius: '12px',
-                padding: '1rem',
-                fontSize: '0.825rem',
-                color: '#92400e',
-                display: 'flex',
-                gap: '0.75rem',
-                alignItems: 'center'
-              }}>
-                <AlertTriangle size={22} color="#d97706" style={{ flexShrink: 0 }} />
-                <span>
-                  <strong>Peringatan Hukum:</strong> Adopsi anak secara ilegal tanpa rekomendasi Tim PIPA Dinsos &amp; Penetapan Pengadilan Negeri dapat diancam sanksi pidana berdasarkan Undang-Undang Perlindungan Anak.
-                </span>
-              </div>
-
               <div style={{ display: 'flex', gap: '1rem' }}>
                 <button
                   onClick={() => setActiveTab('kelayakan')}
@@ -797,8 +748,8 @@ export default function AdopsiModal({ isOpen, onClose }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
               <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '1.5rem' }}>
-                <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0b1f5c', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Sparkles size={20} color="#d97706" /> Filter Kelayakan Otomatis Syarat Hukum COTA
+                <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0b1f5c', marginBottom: '0.5rem' }}>
+                  Filter Kelayakan Otomatis Syarat Hukum COTA
                 </h4>
                 <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0, marginBottom: '1.25rem' }}>
                   Sistem akan menguji kelayakan awal data Anda sesuai dengan ketentuan syarat usia dan pernikahan legal Republik Indonesia.
@@ -1407,14 +1358,9 @@ export default function AdopsiModal({ isOpen, onClose }) {
           borderTop: '1px solid #e2e8f0',
           padding: '1rem 1.75rem',
           display: 'flex',
-          justifyContent: 'space-between',
+          justifyContent: 'flex-end',
           alignItems: 'center'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: '#64748b' }}>
-            <Lock size={14} color="#1d4ed8" />
-            <span>Sistem Terenkripsi &amp; Terhubung dengan Dinas Sosial Kabupaten</span>
-          </div>
-
           <button onClick={onClose} className="btn btn-secondary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem' }}>
             Tutup Windows
           </button>

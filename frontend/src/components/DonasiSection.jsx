@@ -252,8 +252,7 @@ export default function DonasiSection() {
             padding: '1.75rem',
             boxShadow: 'var(--shadow-lg)'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.85rem' }}>
-              <Sparkles size={20} color="#1d4ed8" />
+            <div style={{ marginBottom: '1.25rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.85rem' }}>
               <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0b1f5c', margin: 0 }}>
                 Formulir Donasi Online
               </h3>
@@ -354,10 +353,6 @@ export default function DonasiSection() {
               >
                 <Heart size={18} fill="#ffffff" /> Salurkan Donasi Sekarang <ArrowRight size={18} />
               </button>
-
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', fontSize: '0.725rem', color: '#64748b' }}>
-                <QrCode size={14} color="#059669" /> Pembayaran Aman &amp; Otomatis Menggunakan QRIS Standard BI
-              </div>
 
             </form>
           </div>

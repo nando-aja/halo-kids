@@ -225,7 +225,6 @@ export default function AiAssistant({
                 <div>
                   <h2 className="text-sm sm:text-base font-black tracking-tight flex items-center gap-2">
                     HaloKids AI Assistant &amp; Verifikasi Berkas
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-400/20 text-cyan-200 ring-1 ring-cyan-400/40">Single-Agent Engine</span>
                   </h2>
                   <p className="text-[11px] text-slate-400 hidden sm:block">Modul inspeksi OCR COTA &amp; Donasi berdasarkan PRD Dinas Sosial Kabupaten</p>
                 </div>

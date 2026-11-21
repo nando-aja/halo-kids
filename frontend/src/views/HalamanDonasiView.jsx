@@ -448,10 +448,6 @@ const handleProofSubmit = async (e) => {
         padding: '3.5rem 0 3rem 0'
       }}>
         <div className="container" style={{ textAlign: 'center', maxWidth: '800px', margin: '0 auto' }}>
-          <span className="badge" style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0', marginBottom: '0.75rem', padding: '0.35rem 0.85rem', borderRadius: '50px', fontSize: '0.75rem', fontWeight: 800 }}>
-            <Heart size={14} color="#15803d" style={{ marginRight: '0.35rem' }} />
-            PORTAL DONASI UANG &amp; PAKET LOGISTIK DINSOS
-          </span>
           <h1 style={{ fontSize: 'clamp(2rem, 4vw, 2.75rem)', fontWeight: 800, margin: '0 0 0.85rem 0', letterSpacing: '-0.02em', color: '#ffffff' }}>
             Salurkan Kepedulian untuk Panti Asuhan
           </h1>
@@ -657,8 +653,7 @@ const handleProofSubmit = async (e) => {
                   padding: '1.75rem',
                   boxShadow: 'var(--shadow-lg)'
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.85rem' }}>
-                    <Sparkles size={20} color="#1d4ed8" />
+                  <div style={{ marginBottom: '1.25rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.85rem' }}>
                     <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0b1f5c', margin: 0 }}>
                       Formulir Transaksi Donasi
                     </h3>
@@ -756,10 +751,6 @@ const handleProofSubmit = async (e) => {
                       <Heart size={18} fill="#ffffff" /> Lanjut Pembayaran Donasi <ArrowRight size={18} />
                     </button>
 
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', fontSize: '0.725rem', color: '#059669', fontWeight: 600 }}>
-                      <QrCode size={14} /> Mendukung QRIS Standard BI &amp; Transfer Bank Otomatis
-                    </div>
-
                   </form>
                 </div>
               </div>
@@ -769,10 +760,6 @@ const handleProofSubmit = async (e) => {
             /* TAB 2: DONASI BARANG & PENGIRIMAN PAKET (REQUIREMENT 6) */
             <div>
               <div style={{ maxWidth: '850px', margin: '0 auto 2.5rem auto', textAlign: 'center' }}>
-                <span className="badge" style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', marginBottom: '0.5rem', padding: '0.35rem 0.85rem', borderRadius: '50px', fontSize: '0.75rem', fontWeight: 800 }}>
-                  <Package size={14} color="#92400e" style={{ marginRight: '0.35rem' }} />
-                  KUMPULAN BARANG DIBUTUHKAN MASING-MASING PANTI (REQ #6)
-                </span>
                 <h2 style={{ fontSize: '1.8rem', fontWeight: 800, color: '#0b1f5c', margin: '0 0 0.5rem 0' }}>
                   Kirim Paket Barang Langsung ke Alamat Panti
                 </h2>

@@ -370,13 +370,10 @@ const resetForm = () => {
 
                 {/* Usia (Minimal 17 Tahun) */}
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                  <div style={{ marginBottom: '0.4rem' }}>
                     <label style={{ fontSize: '0.825rem', fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                       <ShieldCheck size={15} color="#1d4ed8" /> Usia Relawan (Tahun) *
                     </label>
-                    <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#b45309', background: '#fef3c7', padding: '0.15rem 0.5rem', borderRadius: '50px' }}>
-                      Batas Min: 17 Thn
-                    </span>
                   </div>
                   <input
                     type="number"
@@ -490,9 +487,6 @@ const resetForm = () => {
                     <p style={{ fontSize: '0.8rem', color: '#475569', margin: 0, lineHeight: 1.45 }}>
                       Mendampingi bimbingan belajar anak SD/SMP/SMA, calistung untuk adik balita/usia dini, kursus bahasa asing (Inggris/Arab), dan pelatihan komputer dasar.
                     </p>
-                    <span style={{ display: 'inline-block', marginTop: '0.5rem', background: '#dbeafe', color: '#1e40af', fontSize: '0.7rem', fontWeight: 700, padding: '0.15rem 0.5rem', borderRadius: '4px' }}>
-                      Kebutuhan Tinggi di Semua LKSA
-                    </span>
                   </div>
                 </div>
 
@@ -540,9 +534,6 @@ const resetForm = () => {
                     <p style={{ fontSize: '0.8rem', color: '#475569', margin: 0, lineHeight: 1.45 }}>
                       Kelas melukis, mewarnai, sanggar tari kreasi, musik &amp; gitar, latihan futsal/sepak bola, bulu tangkis, senam kebugaran, dan trauma healing anak.
                     </p>
-                    <span style={{ display: 'inline-block', marginTop: '0.5rem', background: '#d1fae5', color: '#065f46', fontSize: '0.7rem', fontWeight: 700, padding: '0.15rem 0.5rem', borderRadius: '4px' }}>
-                      Paling Disukai Anak-Anak Panti
-                    </span>
                   </div>
                 </div>
               </div>

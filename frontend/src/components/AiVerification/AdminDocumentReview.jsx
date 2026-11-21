@@ -518,9 +518,6 @@ export default function AdminDocumentReview({
             <div>
               <h2 id="modal-ai-review-title" className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
                 AI Agentic Verifikasi Berkas
-                <span className="text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded bg-cyan-400/20 text-cyan-200 ring-1 ring-cyan-400/40">
-                  Super Admin / Dinsos PIPA
-                </span>
               </h2>
               <p className="text-xs text-blue-200/80 mt-0.5">
                 {selectedApplicant ? (
@@ -592,51 +589,6 @@ export default function AdminDocumentReview({
             <X size={20} className="group-hover:rotate-90 transition-transform duration-200" />
           </button>
         )}
-
-        {/* Active Document Metadata Ribbon */}
-        <div className="mt-4 pt-3 border-t border-white/10 flex flex-wrap items-center justify-between text-xs text-blue-100 gap-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="bg-white/10 px-2.5 py-1 rounded-md font-mono text-cyan-200">
-              ID: {selectedApplicant?.rawId ? `PENGAJUAN-${selectedApplicant.rawId}` : activeDoc.id}
-            </span>
-            <span className="text-blue-200/90">Kategori: <strong>{selectedApplicant?.rawId ? (selectedActualDoc?.label || 'Dokumen COTA') : activeDoc.kategori}</strong></span>
-            <span>{selectedApplicant?.rawId ? 'Sumber: Backend/MySQL' : `Diunggah: ${activeDoc.tanggal_unggah}`}</span>
-            <span>{selectedApplicant?.rawId ? `Berkas: ${selectedActualDoc?.path?.split(/[\\/]/).pop() || '-'}` : `Ukuran: ${activeDoc.ukuran_file}`}</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-blue-200">{selectedApplicant?.rawId ? 'Keterbacaan OCR:' : 'Confidence OCR:'}</span>
-            <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-bold bg-white/10 text-white border border-white/20">
-              <Sparkles size={12} className={activeDoc.skor_confidence >= 85 ? 'text-emerald-400' : 'text-amber-400'} />
-              <span>{selectedApplicant?.rawId
-                ? (() => {
-                    if (!liveAiResult) return '—';
-                    const explicit = liveAiResult.confidence ?? liveAiResult.confidence_score;
-                    if (explicit != null) return explicit;
-                    const pct = summarizeAiResult(liveAiResult).percent;
-                    return pct == null ? '—' : `${pct}%`;
-                  })()
-                : `${activeDoc.skor_confidence}%`}</span>
-            </div>
-
-            {/* Status Pill */}
-            {isApproved && (
-              <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                <CheckCircle2 size={12} /> DIVERIFIKASI SAH
-              </span>
-            )}
-            {isPendingManual && (
-              <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
-                <AlertTriangle size={12} /> PERLU TINJAUAN MANUAL
-              </span>
-            )}
-            {isRejected && (
-              <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">
-                <XCircle size={12} /> DITOLAK
-              </span>
-            )}
-          </div>
-        </div>
       </div>
 
       {/* Toast Notification */}
