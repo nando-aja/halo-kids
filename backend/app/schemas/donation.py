@@ -76,11 +76,6 @@ class DonationCreate(BaseModel):
 
         else:
 
-            if self.bukti_transfer:
-                raise ValueError(
-                    "Bukti transfer tidak digunakan untuk donasi barang"
-                )
-
             if (
                 self.jumlah_barang is None
                 or self.jumlah_barang <= 0
@@ -148,3 +143,10 @@ class DonationResponse(BaseModel):
     model_config = ConfigDict(
         from_attributes=True
     )
+
+
+class AdminDonationResponse(DonationResponse):
+    """Respons donasi untuk Dinsos, dilengkapi nama donatur & panti asli."""
+
+    nama_donatur: str | None = None
+    nama_panti: str | None = None

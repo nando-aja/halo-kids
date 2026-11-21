@@ -1,3 +1,4 @@
+import re
 from datetime import date
 from decimal import Decimal
 from uuid import uuid4
@@ -5,7 +6,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db, require_masyarakat
+from app.api.deps import get_current_user, get_db, require_masyarakat
 from app.db.models.adoption import PengajuanAdopsi
 from app.db.models.donation import Donasi
 from app.db.models.notification import Notifikasi
@@ -262,6 +263,100 @@ def get_my_adoptions(
         .order_by(PengajuanAdopsi.id.desc())
         .all()
     )
+
+
+_ADOPTION_TRACKING = {
+    "diajukan": (
+        1,
+        "Diajukan - Menunggu Verifikasi Berkas",
+        "Pengajuan COTA telah diterima dan menunggu pemeriksaan berkas oleh Dinsos.",
+    ),
+    "menunggu_tinjauan_manual": (
+        2,
+        "Verifikasi AI & Berkas",
+        "Berkas sedang ditinjau manual oleh admin Dinsos setelah analisis AI.",
+    ),
+    "butuh_dokumen_tambahan": (
+        2,
+        "Butuh Dokumen Tambahan",
+        "Dinsos meminta dokumen tambahan. Silakan lengkapi berkas melalui dashboard Anda.",
+    ),
+    "diverifikasi": (
+        3,
+        "Berkas Terverifikasi",
+        "Berkas dinyatakan lengkap dan terverifikasi. Menunggu tahap berikutnya dari Dinsos.",
+    ),
+    "disetujui": (
+        5,
+        "Disetujui Dinsos",
+        "Pengajuan COTA telah disetujui oleh Dinsos.",
+    ),
+    "ditolak": (
+        2,
+        "Pengajuan Ditolak",
+        "Pengajuan tidak dapat dilanjutkan. Hubungi Dinsos untuk informasi lebih lanjut.",
+    ),
+}
+
+
+@router.get("/pengajuan-adopsi/lacak/{kode_tiket}")
+def track_my_adoption_ticket(
+    kode_tiket: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Lacak pengajuan COTA berdasarkan nomor registrasi (PIPA-<tahun>-<id>).
+
+    Data pemohon bersifat pribadi, sehingga hanya pemilik pengajuan
+    (atau admin Dinsos) yang dapat melihat hasilnya. Nama pemohon,
+    panti, tanggal, dan status seluruhnya diambil dari database.
+    """
+    match = re.fullmatch(
+        r"PIPA-\d{4}-(\d+)", kode_tiket.strip().upper()
+    )
+    if match is None:
+        raise HTTPException(
+            status_code=404, detail="Nomor registrasi COTA tidak ditemukan"
+        )
+
+    item = (
+        db.query(PengajuanAdopsi)
+        .filter(PengajuanAdopsi.id == int(match.group(1)))
+        .first()
+    )
+    is_owner = item is not None and item.id_user == current_user.id
+    if item is None or not (is_owner or current_user.peran == "admin"):
+        # Pesan sama untuk "tidak ada" dan "bukan milik Anda" agar nomor
+        # registrasi milik orang lain tidak bisa ditebak.
+        raise HTTPException(
+            status_code=404, detail="Nomor registrasi COTA tidak ditemukan"
+        )
+
+    step, label, notes = _ADOPTION_TRACKING.get(
+        item.status, (1, item.status, "")
+    )
+
+    nama_panti = None
+    if item.id_panti:
+        panti = (
+            db.query(PantiAsuhan)
+            .filter(PantiAsuhan.id == item.id_panti)
+            .first()
+        )
+        nama_panti = panti.nama_panti if panti else None
+
+    return {
+        "kode_tiket": kode_tiket.strip().upper(),
+        "id": item.id,
+        "nama_pemohon": item.nama_pemohon,
+        "nama_panti": nama_panti,
+        "status": item.status,
+        "tahap_saat_ini": step,
+        "label_status": label,
+        "catatan": notes,
+        "ditolak": item.status == "ditolak",
+        "tanggal_pengajuan": item.tanggal_pengajuan,
+    }
 
 
 @router.get(
@@ -549,14 +644,36 @@ def create_donation(
 
     else:
 
-        if data.bukti_transfer:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    "Bukti transfer tidak digunakan "
-                    "untuk donasi barang"
-                ),
-            )
+        # Bukti barang (foto paket / resi pengiriman) bersifat opsional di API,
+        # tetapi bila dikirim harus berasal dari unggahan akun ini sendiri.
+        goods_proof = (
+            str(data.bukti_transfer or "")
+            .replace("\\", "/")
+            .strip()
+        )
+
+        if goods_proof:
+            if not goods_proof.startswith(
+                f"storage/bukti_transfer/user-{current_user.id}-"
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        "Bukti barang tidak berasal dari "
+                        "unggahan akun yang sedang login"
+                    ),
+                )
+
+            if not stored_file_exists(goods_proof):
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "Bukti barang tidak ditemukan di "
+                        "penyimpanan. Silakan unggah ulang."
+                    ),
+                )
+
+            proof_path = goods_proof
 
         wishlist = None
 

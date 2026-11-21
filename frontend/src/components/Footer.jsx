@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Shield,
+  HeartHandshake,
   CheckCircle2,
   Phone,
   Mail,
@@ -409,16 +410,17 @@ export default function Footer() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
                 <div style={{
-                  background: 'linear-gradient(135deg, #1d4ed8 0%, #0284c7 100%)',
+                  background: 'linear-gradient(135deg, #0b1f5c 0%, #1d4ed8 100%)',
                   color: '#ffffff',
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '10px',
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '12px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  boxShadow: '0 4px 10px rgba(29, 78, 216, 0.3)',
                 }}>
-                  <Shield size={20} />
+                  <HeartHandshake size={24} />
                 </div>
                 <span style={{ fontSize: '1.3rem', fontWeight: 800, color: '#ffffff', fontFamily: 'var(--font-heading)' }}>
                   HaloKids

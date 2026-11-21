@@ -48,7 +48,8 @@ import {
   donasiService,
   adopsiService,
   relawanService,
-  pengaduanService
+  pengaduanService,
+  statsService
 } from '../api';
 
 export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUser, onUserUpdate, volunteerList, setVolunteerList }) {
@@ -336,11 +337,13 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
   const [reportSyncError, setReportSyncError] = useState('');
 
   // 4. Audit Donasi Daerah & Pemetaan Kebutuhan (Super Admin Req #4)
-  const regionalDonationAudit = [
-    { panti: 'LKSA Kasih Bunda Mandiri', location: 'Cibinong', moneyReceived: 'Rp 45.500.000', goodsReceived: '85 Paket Sembako & Seragam', priorityNeed: 'Sedang', mainNeed: 'Buku Tulis & Sepatu' },
-    { panti: 'Panti Balita Tunas Bangsa', location: 'Cibinong', moneyReceived: 'Rp 62.000.000', goodsReceived: '120 Pax Popok & Susu', priorityNeed: 'KRITIS (Mendesak)', mainNeed: 'Susu Formula SGM & Perlak' },
-    { panti: 'LKSA Bina Harapan Ciawi', location: 'Ciawi', moneyReceived: 'Rp 28.100.000', goodsReceived: '15 Unit Komputer & Alat Boga', priorityNeed: 'Tinggi', mainNeed: 'Bahan Pelatihan Boga' }
-  ];
+  // Rekap per panti diambil dari endpoint /api/admin/donasi-rekap-panti.
+  const [donationRecap, setDonationRecap] = useState([]);
+  const [donationRecapStatus, setDonationRecapStatus] = useState('loading');
+
+  // Statistik Dashboard Analitis diambil dari /api/admin/dashboard/stats.
+  const [analyticsData, setAnalyticsData] = useState(null);
+  const [analyticsStatus, setAnalyticsStatus] = useState('loading');
 
   // ----------------------------------------------------
   // DATA STATES FOR ADMIN PANTI (REQUIREMENT 2)
@@ -678,12 +681,11 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
     ? new Date(d.tanggal_donasi).toLocaleDateString('id-ID')
     : 'Tanggal tidak tersedia',
 
-  donor: d.id_user
-    ? `Donatur #${d.id_user}`
-    : 'Warga Anonim',
+  donor: d.nama_donatur ||
+    (d.id_user ? `Donatur #${d.id_user}` : 'Warga Anonim'),
 
-  panti: d.panti_asuhan?.nama_panti ||
-    `LKSA Panti #${d.id_panti || 1}`,
+  panti: d.nama_panti ||
+    (d.id_panti ? `LKSA Panti #${d.id_panti}` : 'Panti tidak diketahui'),
 
   jenis: d.jenis_donasi,
 
@@ -708,11 +710,30 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
       }
     };
 
+    const syncDonationRecap = async () => {
+      try {
+        const recap = await donasiService.getAdminDonationRecap();
+        if (!active) return;
+        setDonationRecap(Array.isArray(recap) ? recap : []);
+        setDonationRecapStatus('ready');
+      } catch (err) {
+        if (active) {
+          console.error(
+            'Gagal memuat rekap donasi per panti:',
+            err?.friendlyMessage || err?.message || err
+          );
+          setDonationRecapStatus('error');
+        }
+      }
+    };
+
     syncAdminDonations();
+    syncDonationRecap();
 
 // Update jika ada transaksi baru
 const handleDonationsUpdated = () => {
   syncAdminDonations();
+  syncDonationRecap();
 };
 
 window.addEventListener(
@@ -728,6 +749,38 @@ return () => {
     handleDonationsUpdated
   );
 };
+  }, [dashboardRoleMode, superAdminTab, currentUser]);
+
+  // Memuat statistik analitik Dinsos (header sidebar + Dashboard Analitis).
+  useEffect(() => {
+    if (dashboardRoleMode !== 'superadmin') return undefined;
+
+    let active = true;
+
+    const syncAnalytics = async () => {
+      try {
+        const stats = await statsService.getAdminDashboardStats();
+        if (!active) return;
+        setAnalyticsData(stats?.analitik || null);
+        setAnalyticsStatus('ready');
+      } catch (err) {
+        if (active) {
+          console.error(
+            'Gagal memuat statistik dashboard:',
+            err?.friendlyMessage || err?.message || err
+          );
+          setAnalyticsStatus('error');
+        }
+      }
+    };
+
+    syncAnalytics();
+    window.addEventListener('halokids:data_updated', syncAnalytics);
+
+    return () => {
+      active = false;
+      window.removeEventListener('halokids:data_updated', syncAnalytics);
+    };
   }, [dashboardRoleMode, superAdminTab, currentUser]);
 
   // Memuat laporan pengaduan ketika menu pengaduan dibuka.
@@ -1272,8 +1325,107 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
     } catch (e) { }
   };
 
+  // Kartu Dashboard Analitis dihitung dari data asli backend.
+  const fmtPct = (part, total) => (total > 0 ? `${Math.round((part / total) * 100)}%` : '0%');
+  const analyticsCards = (() => {
+    if (!analyticsData) {
+      const placeholder = analyticsStatus === 'error' ? 'Gagal memuat' : 'Memuat...';
+      return ['Total LKSA Terdaftar', 'Master Data Anak Asuh', 'Pengaduan Selesai Ditangani', 'Pengangkatan Anak (PIPA)']
+        .map((title) => ({ title, num: placeholder, sub: '' }));
+    }
+    const a = analyticsData;
+    const statusBreakdown = Object.entries(a.anak_asuh_per_status || {})
+      .map(([label, total]) => `${label}: ${total}`)
+      .join(', ');
+    return [
+      {
+        title: 'Total LKSA Terdaftar',
+        num: `${a.total_panti} Panti`,
+        sub: `${a.panti_bertanda_daftar} panti memiliki status akreditasi/tanda daftar`,
+      },
+      {
+        title: 'Master Data Anak Asuh',
+        num: `${a.total_anak_asuh_tercatat.toLocaleString('id-ID')} Anak`,
+        sub: statusBreakdown || 'Belum ada data anak asuh yang dicatat panti',
+      },
+      {
+        title: 'Pengaduan Selesai Ditangani',
+        num: fmtPct(a.pengaduan_selesai, a.total_pengaduan),
+        sub: `${a.pengaduan_selesai} dari ${a.total_pengaduan} pengaduan berstatus selesai`,
+      },
+      {
+        title: 'Pengangkatan Anak (PIPA)',
+        num: `${a.adopsi_disetujui} Pengajuan`,
+        sub: `Disetujui dari ${a.total_pengajuan_adopsi} pengajuan COTA`,
+      },
+    ];
+  })();
+
+  const downloadBlob = (blob, filename) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const handleExportReport = (format) => {
-    showToast(`Laporan Eksekutif Dinsos Berhasil Di-export dalam format ${format}! File siap diunduh.`);
+    if (!analyticsData) {
+      showToast('Data statistik belum tersedia, tidak ada yang bisa diekspor.');
+      return;
+    }
+    const today = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    const stamp = new Date().toISOString().slice(0, 10);
+
+    if (format === 'Excel') {
+      const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const rows = [
+        ['Laporan Eksekutif Dinsos HaloKids', today],
+        [],
+        ['Indikator', 'Nilai', 'Keterangan'],
+        ...analyticsCards.map((c) => [c.title, c.num, c.sub]),
+        [],
+        ['Rekap Donasi per Panti'],
+        ['Panti', 'Uang Terverifikasi (Rp)', 'Barang Diterima (unit)', 'Donasi Menunggu', 'Urgensi', 'Kebutuhan Mendesak'],
+        ...donationRecap.map((r) => [
+          r.nama_panti,
+          Number(r.uang_terverifikasi || 0),
+          r.total_barang_diterima,
+          r.donasi_menunggu,
+          r.tingkat_urgensi,
+          (r.kebutuhan_mendesak || []).join('; '),
+        ]),
+      ];
+      const csv = '\uFEFF' + rows.map((r) => r.map(esc).join(',')).join('\r\n');
+      downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `laporan-eksekutif-dinsos-${stamp}.csv`);
+      showToast('Laporan diekspor sebagai CSV (dapat dibuka di Excel).');
+      return;
+    }
+
+    const html = (text) => String(text ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    const w = window.open('', '_blank');
+    if (!w) {
+      showToast('Pop-up diblokir browser. Izinkan pop-up untuk mencetak laporan.');
+      return;
+    }
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Laporan Eksekutif Dinsos</title>
+      <style>body{font-family:Arial,sans-serif;padding:32px;color:#0f172a}h1{color:#0b1f5c;margin:0}
+      table{border-collapse:collapse;width:100%;margin:12px 0 28px}th,td{border:1px solid #cbd5e1;padding:8px;text-align:left;font-size:13px}
+      th{background:#f1f5f9}</style></head><body>
+      <h1>Laporan Eksekutif Dinsos HaloKids</h1><p>Dicetak ${html(today)}</p>
+      <h3>Indikator Kinerja</h3>
+      <table><tr><th>Indikator</th><th>Nilai</th><th>Keterangan</th></tr>
+      ${analyticsCards.map((c) => `<tr><td>${html(c.title)}</td><td>${html(c.num)}</td><td>${html(c.sub)}</td></tr>`).join('')}</table>
+      <h3>Rekap Donasi per Panti</h3>
+      <table><tr><th>Panti</th><th>Uang Terverifikasi</th><th>Barang Diterima</th><th>Urgensi</th><th>Kebutuhan Mendesak</th></tr>
+      ${donationRecap.map((r) => `<tr><td>${html(r.nama_panti)}</td><td>Rp ${Number(r.uang_terverifikasi || 0).toLocaleString('id-ID')}</td><td>${r.total_barang_diterima}</td><td>${html(r.tingkat_urgensi)}</td><td>${html((r.kebutuhan_mendesak || []).join(', ') || '-')}</td></tr>`).join('')}</table>
+      </body></html>`);
+    w.document.close();
+    w.focus();
+    w.print();
   };
 
   return (
@@ -1423,7 +1575,7 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
                 {dashboardRoleMode === 'user' ? 'Workspace Fitur Publik' : dashboardRoleMode === 'superadmin' ? 'Dinsos Control Center' : 'Panel Admin LKSA'}
               </h3>
               <span style={{ fontSize: '0.725rem', color: '#94a3b8' }}>
-                {dashboardRoleMode === 'user' ? 'Layanan Publik Terpadu' : dashboardRoleMode === 'superadmin' ? 'Supervising 28 Panti & TRC' : 'LKSA Kasih Bunda Mandiri'}
+                {dashboardRoleMode === 'user' ? 'Layanan Publik Terpadu' : dashboardRoleMode === 'superadmin' ? (analyticsData ? `Supervising ${analyticsData.total_panti} Panti & TRC` : 'Supervising Panti & TRC') : 'LKSA Kasih Bunda Mandiri'}
               </span>
             </div>
 
@@ -2770,19 +2922,54 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
                         </tr>
                       </thead>
                       <tbody>
-                        {regionalDonationAudit.map((row, idx) => (
-                          <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={{ padding: '0.85rem', fontWeight: 700, color: '#0b1f5c' }}>{row.panti} ({row.location})</td>
-                            <td style={{ padding: '0.85rem', color: '#15803d', fontWeight: 700 }}>{row.moneyReceived}</td>
-                            <td style={{ padding: '0.85rem' }}>{row.goodsReceived}</td>
-                            <td style={{ padding: '0.85rem' }}>
-                              <span style={{ background: row.priorityNeed.includes('KRITIS') ? '#fee2e2' : '#fef3c7', color: row.priorityNeed.includes('KRITIS') ? '#dc2626' : '#b45309', padding: '0.2rem 0.5rem', borderRadius: '50px', fontSize: '0.725rem', fontWeight: 800 }}>
-                                {row.priorityNeed}
-                              </span>
-                            </td>
-                            <td style={{ padding: '0.85rem', fontWeight: 600 }}>{row.mainNeed}</td>
-                          </tr>
-                        ))}
+                        {donationRecapStatus === 'loading' && (
+                          <tr><td colSpan={5} style={{ padding: '1rem', color: '#64748b', fontStyle: 'italic' }}>Memuat rekap donasi...</td></tr>
+                        )}
+                        {donationRecapStatus === 'error' && (
+                          <tr><td colSpan={5} style={{ padding: '1rem', color: '#dc2626' }}>Rekap donasi gagal dimuat. Coba muat ulang halaman.</td></tr>
+                        )}
+                        {donationRecapStatus === 'ready' && donationRecap.length === 0 && (
+                          <tr><td colSpan={5} style={{ padding: '1rem', color: '#64748b', fontStyle: 'italic' }}>Belum ada panti terdaftar.</td></tr>
+                        )}
+                        {donationRecapStatus === 'ready' && donationRecap.map((row) => {
+                          const urgency = row.tingkat_urgensi;
+                          const urgencyStyle = urgency === 'Kritis'
+                            ? { background: '#fee2e2', color: '#dc2626' }
+                            : urgency === 'Tinggi'
+                              ? { background: '#ffedd5', color: '#c2410c' }
+                              : urgency === 'Sedang'
+                                ? { background: '#fef3c7', color: '#b45309' }
+                                : urgency === 'Terpenuhi'
+                                  ? { background: '#dcfce7', color: '#15803d' }
+                                  : { background: '#f1f5f9', color: '#64748b' };
+                          const money = Number(row.uang_terverifikasi || 0);
+                          return (
+                            <tr key={row.id_panti} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                              <td style={{ padding: '0.85rem', fontWeight: 700, color: '#0b1f5c' }}>{row.nama_panti}</td>
+                              <td style={{ padding: '0.85rem', color: '#15803d', fontWeight: 700 }}>
+                                Rp {money.toLocaleString('id-ID')}
+                                {row.donasi_menunggu > 0 && (
+                                  <span style={{ display: 'block', color: '#b45309', fontSize: '0.7rem', fontWeight: 600 }}>
+                                    +{row.donasi_menunggu} donasi menunggu verifikasi
+                                  </span>
+                                )}
+                              </td>
+                              <td style={{ padding: '0.85rem' }}>
+                                {row.total_barang_diterima > 0
+                                  ? `${row.total_barang_diterima.toLocaleString('id-ID')} unit (${row.jumlah_donasi_barang} donasi)`
+                                  : '-'}
+                              </td>
+                              <td style={{ padding: '0.85rem' }}>
+                                <span style={{ ...urgencyStyle, padding: '0.2rem 0.5rem', borderRadius: '50px', fontSize: '0.725rem', fontWeight: 800 }}>
+                                  {urgency}
+                                </span>
+                              </td>
+                              <td style={{ padding: '0.85rem', fontWeight: 600 }}>
+                                {row.kebutuhan_mendesak?.length ? row.kebutuhan_mendesak.join(', ') : '-'}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -2817,13 +3004,13 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
                     </div>
                   </div>
 
+                  {analyticsStatus === 'error' && (
+                    <p style={{ color: '#dc2626', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                      Statistik gagal dimuat dari server. Coba muat ulang halaman.
+                    </p>
+                  )}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.25rem', marginBottom: '2rem' }} className="grid-4">
-                    {[
-                      { title: 'Total LKSA Terdaftar', num: '28 Panti', sub: '100% Mengantongi Tanda Daftar' },
-                      { title: 'Master Data Anak Asuh', num: '1.240 Anak', sub: 'Yatim, Piatu, & Dhuafa' },
-                      { title: 'Kasus Anak Hilang Selesai', num: '94%', sub: '23 Kasus Teratasi Tepat Waktu' },
-                      { title: 'Pengangkatan Anak (PIPA)', num: '18 Anak', sub: 'Legalitas Resmi Terbit' }
-                    ].map((box, i) => (
+                    {analyticsCards.map((box, i) => (
                       <div key={i} style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '1.25rem', boxShadow: 'var(--shadow-sm)' }}>
                         <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, display: 'block', marginBottom: '0.35rem' }}>{box.title}</span>
                         <strong style={{ fontSize: '1.5rem', color: '#0b1f5c', fontWeight: 800, display: 'block', marginBottom: '0.2rem' }}>{box.num}</strong>

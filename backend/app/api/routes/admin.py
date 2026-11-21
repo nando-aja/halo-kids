@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_admin
 from app.db.models.adoption import PengajuanAdopsi
+from app.db.models.anak_asuh import AnakAsuh
 from app.db.models.donation import Donasi
 from app.db.models.dana import LaporanDana
 from app.db.models.gallery import GaleriPanti
@@ -852,10 +853,50 @@ def get_dashboard_stats(
         Donasi.tanggal_donasi,
     )
 
+    total_panti = db.query(func.count(PantiAsuhan.id)).scalar() or 0
+    panti_terdaftar = (
+        db.query(func.count(PantiAsuhan.id))
+        .filter(
+            PantiAsuhan.status_akreditasi.isnot(None),
+            PantiAsuhan.status_akreditasi != "",
+        )
+        .scalar()
+        or 0
+    )
+
+    anak_tercatat = db.query(func.count(AnakAsuh.id)).scalar() or 0
+    anak_per_status = {
+        (status or "Belum diisi"): int(total)
+        for status, total in db.query(
+            AnakAsuh.status_kesejahteraan, func.count(AnakAsuh.id)
+        )
+        .group_by(AnakAsuh.status_kesejahteraan)
+        .all()
+    }
+
+    total_pengaduan = report_query.count()
+    pengaduan_selesai = report_query.filter(
+        LaporanPengaduan.status == "selesai"
+    ).count()
+
+    adopsi_disetujui = adoption_query.filter(
+        PengajuanAdopsi.status.in_(["diverifikasi", "disetujui"])
+    ).count()
+
     return {
         "periode": {
             "mulai": start_date,
             "selesai": end_date,
+        },
+        "analitik": {
+            "total_panti": int(total_panti),
+            "panti_bertanda_daftar": int(panti_terdaftar),
+            "total_anak_asuh_tercatat": int(anak_tercatat),
+            "anak_asuh_per_status": anak_per_status,
+            "total_pengaduan": int(total_pengaduan),
+            "pengaduan_selesai": int(pengaduan_selesai),
+            "total_pengajuan_adopsi": int(adoption_query.count()),
+            "adopsi_disetujui": int(adopsi_disetujui),
         },
         "jumlah_user": db.query(func.count(User.id)).scalar() or 0,
         "jumlah_panti": db.query(func.count(PantiAsuhan.id)).scalar() or 0,

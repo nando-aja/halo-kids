@@ -60,6 +60,19 @@ export const donasiService = {
 
 
   // ==========================================
+  // REKAP DONASI & KEBUTUHAN PER PANTI (AUDIT DINSOS)
+  // ==========================================
+
+  async getAdminDonationRecap() {
+    const response = await apiClient.get(
+      '/api/admin/donasi-rekap-panti'
+    );
+
+    return response.data;
+  },
+
+
+  // ==========================================
   // DOWNLOAD BUKTI TRANSFER UNTUK ADMIN
   // ==========================================
 
