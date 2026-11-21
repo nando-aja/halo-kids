@@ -14,7 +14,6 @@ import {
   Edit3,
   Save,
   Undo2,
-  Sparkles,
   Bot,
   Info,
   Calendar,
@@ -594,15 +593,6 @@ export default function AdminDocumentReview({
           )}
         </div>
       </div>
-            onClick={handleCloseModal}
-            aria-label="Tutup Pop-up"
-            title="Tutup (ESC)"
-            className="absolute top-4 sm:top-5 right-4 sm:right-5 w-9 h-9 rounded-full bg-white/15 hover:bg-rose-600 text-white flex items-center justify-center transition-all duration-200 shadow-md ring-1 ring-white/20 hover:scale-105 active:scale-95 group shrink-0"
-          >
-            <X size={20} className="group-hover:rotate-90 transition-transform duration-200" />
-          </button>
-        )}
-      </div>
 
       {/* Toast Notification */}
       {toastMessage && (
@@ -628,10 +618,10 @@ export default function AdminDocumentReview({
       )}
 
       {/* ----------------- SPLIT-SCREEN MAIN WORKSPACE ----------------- */}
-      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 bg-slate-50 overflow-hidden">
+      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 bg-slate-50 overflow-y-auto lg:overflow-hidden">
         
         {/* ================= SISI KIRI: DOKUMEN VIEWER CANVAS (5 COLS) ================= */}
-        <div className="lg:col-span-5 bg-slate-900 text-white flex flex-col border-b lg:border-b-0 lg:border-r border-slate-700/60 relative overflow-hidden">
+        <div className="lg:col-span-5 bg-slate-900 text-white flex flex-col border-b lg:border-b-0 lg:border-r border-slate-700/60 relative shrink-0 h-[360px] sm:h-[440px] lg:h-auto overflow-hidden">
           
           {/* Canvas Toolbar */}
           <div className="shrink-0 bg-slate-950/80 backdrop-blur p-2.5 px-4 flex items-center justify-between border-b border-slate-800 text-xs">
@@ -702,27 +692,27 @@ export default function AdminDocumentReview({
           )}
 
           {/* Document Canvas Stage: real applicants load the protected backend file; only the demo uses a generated sample canvas. */}
-          <div className="flex-1 min-h-0 overflow-auto p-4 sm:p-6 flex items-center justify-center bg-slate-950/50">
+          <div className="flex-1 min-h-0 overflow-auto p-4 sm:p-6 flex items-center justify-center bg-slate-900">
             {selectedApplicant?.rawId ? (
               <div className="w-full min-h-[320px] flex flex-col items-center justify-center gap-3 text-center">
                 {actualPreview.loading ? (
                   <div className="text-sm text-cyan-100 flex items-center gap-2"><RefreshCw size={18} className="animate-spin" /> Memuat berkas asli dari backend...</div>
                 ) : actualPreview.url ? (
                   actualPreview.mime.includes('pdf') || selectedActualDoc?.path?.toLowerCase().endsWith('.pdf') ? (
-                    <iframe title={selectedActualDoc?.label || 'Dokumen COTA'} src={actualPreview.url} className="w-full h-[68vh] min-h-[420px] rounded-lg bg-white" />
+                    <iframe title={selectedActualDoc?.label || 'Dokumen COTA'} src={actualPreview.url} className="w-full h-[68vh] min-h-[420px] rounded-xl bg-white shadow-2xl border border-slate-700/80" />
                   ) : actualPreview.mime.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(selectedActualDoc?.path || '') ? (
                     <img
                       src={actualPreview.url}
                       alt={selectedActualDoc?.label || 'Dokumen COTA'}
                       style={{ transform: `scale(${zoomScale}) rotate(${rotation}deg)`, transformOrigin: 'center center', maxWidth: '100%', maxHeight: '68vh', objectFit: 'contain' }}
-                      className="rounded-lg shadow-2xl"
+                      className="rounded-xl shadow-2xl border border-slate-700/80"
                     />
                   ) : (
-                    <a href={actualPreview.url} target="_blank" rel="noreferrer" className="rounded-lg bg-white px-4 py-3 font-bold text-blue-800">Buka / unduh dokumen</a>
+                    <a href={actualPreview.url} target="_blank" rel="noreferrer" className="rounded-xl bg-white px-5 py-3 font-bold text-blue-900 shadow-lg hover:bg-slate-50 transition">Buka / unduh dokumen</a>
                   )
                 ) : (
-                  <div className="max-w-lg rounded-xl border border-slate-700 bg-slate-900 p-5 text-sm text-slate-200">
-                    <FileText size={30} className="mx-auto mb-3 text-cyan-300" />
+                  <div className="max-w-lg rounded-xl border border-slate-700 bg-slate-950/80 p-6 text-sm text-slate-200 shadow-xl">
+                    <FileText size={32} className="mx-auto mb-3 text-cyan-300" />
                     <p className="font-bold text-white">Pratinjau berkas asli belum tersedia</p>
                     <p className="mt-2 text-xs leading-relaxed text-slate-300">{actualPreview.error || 'Pilih dokumen dari daftar atas atau periksa apakah path file tersimpan pada pengajuan.'}</p>
                   </div>
@@ -743,7 +733,7 @@ export default function AdminDocumentReview({
           <div className="shrink-0 p-3 bg-slate-950 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
             {selectedApplicant?.rawId ? (
               <>
-                <span className="truncate" title={selectedActualDoc?.path || ''}>{selectedActualDoc?.path || 'Belum ada berkas dipilih'}</span>
+                <span className="truncate font-mono" title={selectedActualDoc?.path || ''}>{selectedActualDoc?.path || 'Belum ada berkas dipilih'}</span>
                 <span className="text-cyan-400 font-mono shrink-0 ml-3">{actualPreview.mime || (actualPreview.loading ? 'memuat…' : '—')}</span>
               </>
             ) : (
@@ -756,23 +746,20 @@ export default function AdminDocumentReview({
         </div>
 
         {/* ================= SISI KANAN: PANEL EKSTRAKSI & HUMAN-IN-THE-LOOP (7 COLS) ================= */}
-        <div className="lg:col-span-7 flex flex-col bg-white overflow-hidden">
+        <div className="lg:col-span-7 flex flex-col bg-white overflow-visible lg:overflow-hidden">
 
           {/* Hasil AI resmi dari MySQL/backend, ditampilkan terbaca (bukan JSON mentah). */}
           {selectedApplicant?.rawId ? (
             <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 bg-white">
-              <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+              <div className="mb-4 pb-3 border-b border-slate-100 flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                    <Bot size={17} className="text-indigo-700" /> Hasil Analisis AI
+                    <Bot size={17} className="text-blue-700" /> Hasil Analisis AI
                   </h3>
-                  <p className="mt-1 text-[11px] text-slate-500">
+                  <p className="mt-0.5 text-xs text-slate-500">
                     Pengajuan database #{selectedApplicant.rawId} • {selectedApplicant.applicant || 'Pemohon'}
                   </p>
                 </div>
-                <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold border ${liveAiResult ? 'bg-emerald-100 border-emerald-200 text-emerald-800' : 'bg-amber-100 border-amber-200 text-amber-800'}`}>
-                  {liveAiResult ? 'HASIL AI TERSEDIA' : 'BELUM ADA HASIL AI'}
-                </span>
               </div>
 
               {liveAiResult && (liveAiResult.documents || liveAiResult.anomalies || liveAiResult.agent) ? (

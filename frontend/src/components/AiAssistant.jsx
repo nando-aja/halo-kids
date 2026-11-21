@@ -193,7 +193,7 @@ export default function AiAssistant({
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 z-[990] group flex items-center gap-3 p-3.5 bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-900 text-white rounded-full shadow-2xl hover:shadow-blue-600/50 hover:scale-105 active:scale-95 transition-all duration-300 ring-4 ring-white/80"
+          className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-[990] group flex items-center gap-3 p-3.5 bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-900 text-white rounded-full shadow-2xl hover:shadow-blue-600/50 hover:scale-105 active:scale-95 transition-all duration-300 ring-4 ring-white/80"
           title="Buka AI Assistant & Verifikasi Berkas HaloKids"
         >
           <div className="relative">
@@ -209,14 +209,14 @@ export default function AiAssistant({
 
       {isOpen && (
         <div
-          className="fixed inset-0 z-[9999] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 md:p-6 overflow-hidden animate-in fade-in"
+          className="fixed inset-0 z-[9999] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4 md:p-6 overflow-hidden animate-in fade-in"
           onClick={() => setIsOpen(false)}
           role="dialog"
           aria-modal="true"
           aria-label="HaloKids AI Assistant & Verifikasi Berkas"
         >
           <div
-            className={`bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden transition-all duration-300 relative ${isFullscreen ? 'w-full h-full rounded-none' : 'w-full max-w-6xl max-h-[92vh] h-[860px]'}`}
+            className={`bg-white rounded-none sm:rounded-3xl shadow-2xl border-0 sm:border border-slate-200 flex flex-col overflow-hidden transition-all duration-300 relative ${isFullscreen ? 'w-full h-full' : 'w-full max-w-6xl h-full sm:h-[860px] sm:max-h-[92vh]'}`}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="bg-slate-900 text-white p-3.5 sm:px-6 flex items-center justify-between border-b border-slate-800 shrink-0">

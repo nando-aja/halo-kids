@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Heart, Landmark, QrCode, ShieldCheck, CheckCircle2, Gift, Users, Sparkles, ArrowRight, Wallet, DollarSign } from 'lucide-react';
+import { Heart, Landmark, QrCode, ShieldCheck, CheckCircle2, Gift, Users, ArrowRight, Wallet, DollarSign } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import statsService from '../api/statsService';
 

@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   Gift,
   Users,
-  Sparkles,
   ArrowRight,
   Wallet,
   Package,

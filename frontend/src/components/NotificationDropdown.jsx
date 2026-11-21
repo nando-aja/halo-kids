@@ -18,7 +18,6 @@ import {
   Megaphone,
   RefreshCw,
   ShieldAlert,
-  Sparkles,
   Users,
 } from 'lucide-react';
 
@@ -49,7 +48,7 @@ const PERSONAL_UI = {
 const ANNOUNCEMENT_UI = {
   panti_baru: { icon: Building2, color: '#047857', bg: '#ecfdf5', label: 'Panti baru' },
   panti_ditolak: { icon: ShieldAlert, color: '#dc2626', bg: '#fef2f2', label: 'Panti Ditolak' },
-  pembaruan: { icon: Sparkles, color: '#7c3aed', bg: '#f5f3ff', label: 'Pembaruan' },
+  pembaruan: { icon: RefreshCw, color: '#7c3aed', bg: '#f5f3ff', label: 'Pembaruan' },
   pengumuman: { icon: Megaphone, color: '#b45309', bg: '#fffbeb', label: 'Pengumuman' },
 };
 
@@ -333,17 +332,6 @@ function NotificationBell({
     background: 'transparent',
     color: selected ? '#1d4ed8' : '#64748b',
     borderBottom: selected ? '2px solid #1d4ed8' : '2px solid transparent',
-  });
-
-  const chipStyle = (selected) => ({
-    padding: '0.2rem 0.65rem',
-    fontSize: '0.72rem',
-    fontWeight: 600,
-    borderRadius: '9999px',
-    cursor: 'pointer',
-    border: '1px solid ' + (selected ? '#bfdbfe' : '#e2e8f0'),
-    background: selected ? '#eff6ff' : '#ffffff',
-    color: selected ? '#1d4ed8' : '#64748b',
   });
 
   const renderEmpty = (text) => (
@@ -712,32 +700,6 @@ function NotificationBell({
               >
                 Pengumuman
                 {announcementUnseen > 0 ? ` (${announcementUnseen})` : ''}
-              </button>
-            </div>
-          )}
-
-          {showingPersonal && (
-            <div
-              style={{
-                display: 'flex',
-                gap: '0.4rem',
-                padding: '0.55rem 1rem',
-                borderBottom: '1px solid #f1f5f9',
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => setActiveFilter('semua')}
-                style={chipStyle(activeFilter === 'semua')}
-              >
-                Semua
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveFilter('unread')}
-                style={chipStyle(activeFilter === 'unread')}
-              >
-                Belum dibaca
               </button>
             </div>
           )}

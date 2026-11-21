@@ -15,7 +15,6 @@ import {
   ChevronRight,
   LogIn,
   CheckCircle2,
-  Sparkles,
   ChevronDown
 } from 'lucide-react';
 import { notificationService } from '../api/notificationService';
@@ -117,7 +116,7 @@ const INITIAL_GUEST_NOTIFICATIONS = [
     summary: 'Seluruh proses pelaporan darurat dan pengurusan berkas di bawah naungan Dinsos gratis tanpa pungli.',
     time: '1 hari lalu',
     is_read: true,
-    icon: Sparkles,
+    icon: Info,
     iconBg: 'bg-slate-100 text-slate-600',
     actionType: 'info'
   }
@@ -200,7 +199,7 @@ export default function HaloKidsHeader({
               is_read: false,
               icon: a.isi_pengumuman?.toLowerCase().includes('ditolak')
                 ? ShieldAlert
-                : Sparkles,
+                : Info,
               iconBg: a.isi_pengumuman?.toLowerCase().includes('ditolak')
                 ? 'bg-red-50 text-red-600'
                 : 'bg-blue-50 text-blue-600',

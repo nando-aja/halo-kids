@@ -10,7 +10,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Shield,
-  Sparkles,
   X
 } from 'lucide-react';
 
@@ -693,7 +692,6 @@ export default function UserSidebar({
                     e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
                   }}
                 >
-                  <Sparkles size={13} color="#f59e0b" />
                   <span>Simulasi Login Demo</span>
                 </button>
               )}

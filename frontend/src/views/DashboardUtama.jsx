@@ -33,7 +33,8 @@ import {
   FileText,
   RefreshCw,
   Gift,
-  Megaphone
+  Megaphone,
+  Menu
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { AdminDocumentReview, DonationProofReview } from '../components/AiVerification';
@@ -95,6 +96,9 @@ export default function DashboardUtama({ onSwitchToLanding, onLogout, currentUse
 
   // Active Menu Tab for Super Admin
   const [superAdminTab, setSuperAdminTab] = useState('approval_panti'); // 'approval_panti' | 'supervisi_adopsi' | 'monitoring_hilang' | 'audit_donasi' | 'analitik_eksekutif' | 'pengumuman'
+
+  // Mobile sidebar drawer state
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // ----------------------------------------------------
   // GERBANG AKSES PENGELOLA PANTI (LKSA)
@@ -1458,24 +1462,23 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
 
 
       {/* WORKSPACE TOP HEADER BAR */}
-      <header style={{
-        background: '#0b1f5c',
-        color: '#ffffff',
-        padding: '0.85rem 1.5rem',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        borderBottom: '1px solid rgba(255,255,255,0.1)',
-        zIndex: 100,
-        flexShrink: 0
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+      <header className="bg-[#0b1f5c] text-white px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between border-b border-white/10 z-30 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3.5">
+          <button
+            type="button"
+            onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+            className="lg:hidden p-2 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 text-white transition flex items-center justify-center shrink-0 border border-white/20"
+            title="Buka Navigasi Menu"
+            aria-label="Menu Navigasi"
+          >
+            <Menu size={18} />
+          </button>
           <div>
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <LayoutDashboard size={18} color="#60a5fa" />
-              {dashboardRoleMode === 'superadmin' ? 'HaloKids • Dinsos Control Center' : 'HaloKids • Workspace Admin LKSA'}
+            <h3 className="text-sm sm:text-base font-extrabold m-0 tracking-tight flex items-center gap-2">
+              <LayoutDashboard size={18} className="text-blue-400 shrink-0" />
+              <span>{dashboardRoleMode === 'superadmin' ? 'HaloKids • Dinsos Control Center' : 'HaloKids • Workspace Admin LKSA'}</span>
             </h3>
-            <span style={{ fontSize: '0.7rem', color: '#bfdbfe' }}>
+            <span className="text-[11px] text-blue-200 hidden sm:block">
               {dashboardRoleMode === 'superadmin'
                 ? 'Pengawasan, persetujuan, dan audit layanan sosial kabupaten'
                 : 'Pengelolaan operasional dan layanan LKSA'}
@@ -1484,7 +1487,7 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
         </div>
 
         {/* Role ditampilkan sebagai label, bukan tombol pengganti role */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {/* Lonceng notifikasi akun ini (Super Admin / Admin LKSA) */}
           <NotificationDropdown
             isLoggedIn={Boolean(currentUser)}
@@ -1493,12 +1496,12 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
           />
 
           {/* User profile & Logout */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', borderLeft: '1px solid rgba(255,255,255,0.15)', paddingLeft: '0.75rem' }}>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '0.775rem', fontWeight: 800, color: '#ffffff', lineHeight: 1.2 }}>
+          <div className="flex items-center gap-2 border-l border-white/15 pl-2 sm:pl-3">
+            <div className="text-right hidden sm:block">
+              <div className="text-xs font-bold text-white leading-tight truncate max-w-[140px]">
                 {currentUser?.name || 'Admin Dinsos'}
               </div>
-              <div style={{ fontSize: '0.675rem', color: '#93c5fd' }}>
+              <div className="text-[10px] text-blue-200">
                 {dashboardRoleMode === 'superadmin'
                   ? 'Super Admin Dinsos'
                   : dashboardRoleMode === 'pantiadmin'
@@ -1511,19 +1514,9 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
               <button
                 onClick={onLogout}
                 title="Keluar / Logout"
-                style={{
-                  background: 'rgba(239, 68, 68, 0.2)',
-                  color: '#f87171',
-                  border: '1px solid rgba(239, 68, 68, 0.4)',
-                  padding: '0.4rem',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
+                className="p-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 active:scale-95 transition flex items-center justify-center"
               >
-                <LogOut size={15} />
+                <LogOut size={16} />
               </button>
             )}
           </div>
@@ -1532,29 +1525,40 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
       </header>
 
       {/* DASHBOARD LAYOUT (SIDEBAR + MAIN CONTENT) */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      <div className="flex flex-1 min-h-0 overflow-hidden relative">
+
+        {/* Mobile Backdrop Overlay */}
+        {mobileSidebarOpen && (
+          <div
+            onClick={() => setMobileSidebarOpen(false)}
+            className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs lg:hidden animate-in fade-in"
+          />
+        )}
 
         {/* SIDEBAR NAVIGATION */}
-        <aside style={{
-          width: '270px',
-          background: '#07153b',
-          color: '#cbd5e1',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          flexShrink: 0,
-          borderRight: '1px solid rgba(255,255,255,0.1)',
-          height: '100%',
-          overflow: 'hidden'
-        }}>
+        <aside
+          className={`fixed lg:static inset-y-0 left-0 z-50 w-[270px] bg-[#07153b] text-slate-300 flex flex-col justify-between shrink-0 border-r border-white/10 h-full overflow-hidden transition-transform duration-200 ease-in-out ${
+            mobileSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full lg:translate-x-0'
+          }`}
+        >
           <div style={{ padding: '1.25rem 1rem', overflowY: 'auto', flex: 1 }}>
-            <div style={{ paddingBottom: '1rem', marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-              <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
-                {dashboardRoleMode === 'user' ? 'Workspace Fitur Publik' : dashboardRoleMode === 'superadmin' ? 'Dinsos Control Center' : 'Panel Admin LKSA'}
-              </h3>
-              <span style={{ fontSize: '0.725rem', color: '#94a3b8' }}>
-                {dashboardRoleMode === 'user' ? 'Layanan Publik Terpadu' : dashboardRoleMode === 'superadmin' ? (analyticsData ? `Supervising ${analyticsData.total_panti} Panti & TRC` : 'Supervising Panti & TRC') : 'LKSA Kasih Bunda Mandiri'}
-              </span>
+            <div className="pb-3 mb-3 border-b border-white/10 flex items-center justify-between">
+              <div>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
+                  {dashboardRoleMode === 'user' ? 'Workspace Fitur Publik' : dashboardRoleMode === 'superadmin' ? 'Dinsos Control Center' : 'Panel Admin LKSA'}
+                </h3>
+                <span style={{ fontSize: '0.725rem', color: '#94a3b8' }}>
+                  {dashboardRoleMode === 'user' ? 'Layanan Publik Terpadu' : dashboardRoleMode === 'superadmin' ? (analyticsData ? `Supervising ${analyticsData.total_panti} Panti & TRC` : 'Supervising Panti & TRC') : 'LKSA Kasih Bunda Mandiri'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileSidebarOpen(false)}
+                className="lg:hidden p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition"
+                aria-label="Tutup Menu"
+              >
+                <X size={16} />
+              </button>
             </div>
 
             {/* USER PUBLIK MENU */}
@@ -1568,7 +1572,7 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
                 ].map((menu) => (
                   <button
                     key={menu.id}
-                    onClick={() => setUserTab(menu.id)}
+                    onClick={() => { setUserTab(menu.id); setMobileSidebarOpen(false); }}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -1604,7 +1608,7 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
                 ].map((menu) => (
                   <button
                     key={menu.id}
-                    onClick={() => setSuperAdminTab(menu.id)}
+                    onClick={() => { setSuperAdminTab(menu.id); setMobileSidebarOpen(false); }}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -1651,7 +1655,7 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
                 ).map((menu) => (
                   <button
                     key={menu.id}
-                    onClick={() => setPantiAdminTab(menu.id)}
+                    onClick={() => { setPantiAdminTab(menu.id); setMobileSidebarOpen(false); }}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -1686,7 +1690,7 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
 
           <div style={{ padding: '1rem', borderTop: '1px solid rgba(255,255,255,0.1)', flexShrink: 0, background: '#07153b' }}>
             <button
-              onClick={onLogout || onSwitchToLanding}
+              onClick={() => { setMobileSidebarOpen(false); (onLogout || onSwitchToLanding)(); }}
               style={{
                 width: '100%',
                 padding: '0.65rem',
@@ -1712,7 +1716,7 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
         </aside>
 
         {/* MAIN DISPLAY AREA */}
-        <main style={{ flex: 1, padding: '2rem', overflowY: 'auto', minHeight: 0, height: '100%' }}>
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-7 overflow-y-auto min-h-0 h-full bg-slate-50">
 
           {/* ==================================================== */}
           {/* VIEW TYPE USER: PUBLIK USER WORKSPACE                */}

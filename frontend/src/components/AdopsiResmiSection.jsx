@@ -1,14 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
-  Heart,
-  ShieldCheck,
   CheckCircle2,
   ArrowRight,
-  Sparkles,
-  FileCheck,
-  Search,
-  UserCheck,
-  Building2,
   BadgeCheck,
   Bot,
   Scale,
@@ -16,12 +9,6 @@ import {
 } from 'lucide-react';
 
 export default function AdopsiResmiSection({ onOpenAdopsi }) {
-  // Mini Quick Qualifier state directly on landing page
-  const [quickUsia, setQuickUsia] = useState(34);
-  const [quickNikah, setQuickNikah] = useState(6);
-
-  const isEligible = quickUsia >= 30 && quickUsia <= 55 && quickNikah >= 5;
-
   return (
     <section
       id="adopsi-resmi-section"
@@ -291,141 +278,7 @@ export default function AdopsiResmiSection({ onOpenAdopsi }) {
 
         </div>
 
-        {/* Embedded Interactive Quick Qualifier Bar */}
-        <div style={{
-          background: 'linear-gradient(135deg, #0b1f5c 0%, #1d4ed8 100%)',
-          borderRadius: '20px',
-          padding: '2rem',
-          color: '#ffffff',
-          boxShadow: '0 20px 40px -15px rgba(29, 78, 216, 0.3)',
-          display: 'grid',
-          gridTemplateColumns: '1.1fr 0.9fr',
-          gap: '2rem',
-          alignItems: 'center'
-        }} className="adopsi-cta-grid">
-
-          <div>
-            <h3 style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0 0 0.4rem 0', color: '#ffffff' }}>
-              Ingin Mengajukan Adopsi Anak Legal Secara Resmi?
-            </h3>
-            <p style={{ fontSize: '0.875rem', color: '#bfdbfe', margin: 0, lineHeight: 1.5 }}>
-              Uji kualifikasi usia &amp; usia pernikahan Anda sekarang atau buka portal lengkap formulir pengajuan COTA Dinas Sosial.
-            </p>
-
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '1.25rem', flexWrap: 'wrap' }}>
-              <button
-                onClick={onOpenAdopsi}
-                className="btn btn-primary"
-                style={{
-                  background: '#ffffff',
-                  color: '#0b1f5c',
-                  padding: '0.75rem 1.4rem',
-                  fontSize: '0.9rem',
-                  fontWeight: 800,
-                  border: 'none',
-                  boxShadow: '0 4px 14px rgba(0,0,0,0.15)'
-                }}
-              >
-                <UserCheck size={18} /> Buka Formulir COTA Resmi
-              </button>
-
-              <button
-                onClick={onOpenAdopsi}
-                style={{
-                  background: 'rgba(255,255,255,0.15)',
-                  color: '#ffffff',
-                  border: '1px solid rgba(255,255,255,0.3)',
-                  padding: '0.75rem 1.25rem',
-                  borderRadius: '10px',
-                  fontSize: '0.85rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.4rem'
-                }}
-              >
-                <Search size={16} /> Lacak Tiket Adopsi
-              </button>
-            </div>
-          </div>
-
-          {/* Embedded Mini Calculator */}
-          <div style={{
-            background: 'rgba(255,255,255,0.08)',
-            backdropFilter: 'blur(12px)',
-            border: '1px solid rgba(255,255,255,0.18)',
-            borderRadius: '14px',
-            padding: '1.25rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '1rem'
-          }}>
-            <h4 style={{ fontSize: '0.925rem', fontWeight: 800, margin: 0, color: '#ffffff' }}>
-              Simulasi Kualifikasi COTA Cepat:
-            </h4>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>
-              <div>
-                <label style={{ fontSize: '0.75rem', color: '#bfdbfe', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
-                  Usia Pemohon (Thn):
-                </label>
-                <input
-                  type="number"
-                  value={quickUsia}
-                  onChange={(e) => setQuickUsia(Number(e.target.value))}
-                  style={{ width: '100%', padding: '0.5rem 0.65rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.3)', background: '#ffffff', color: '#0b1f5c', fontWeight: 700, fontSize: '0.85rem' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.75rem', color: '#bfdbfe', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
-                  Lama Menikah (Thn):
-                </label>
-                <input
-                  type="number"
-                  value={quickNikah}
-                  onChange={(e) => setQuickNikah(Number(e.target.value))}
-                  style={{ width: '100%', padding: '0.5rem 0.65rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.3)', background: '#ffffff', color: '#0b1f5c', fontWeight: 700, fontSize: '0.85rem' }}
-                />
-              </div>
-            </div>
-
-            <div style={{
-              background: isEligible ? 'rgba(34, 197, 94, 0.25)' : 'rgba(239, 68, 68, 0.25)',
-              border: `1px solid ${isEligible ? '#4ade80' : '#f87171'}`,
-              borderRadius: '8px',
-              padding: '0.65rem 0.85rem',
-              fontSize: '0.8rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between'
-            }}>
-              <span>
-                {isEligible
-                  ? '🟢 Memenuhi Kriteria Syarat Usia & lama Pernikahan!'
-                  : '🔴 Belum Memenuhi Kriteria Usia/Menikah'}
-              </span>
-              <button
-                onClick={onOpenAdopsi}
-                style={{ background: '#ffffff', color: '#0b1f5c', border: 'none', padding: '0.25rem 0.6rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer' }}
-              >
-                Detail →
-              </button>
-            </div>
-          </div>
-
-        </div>
-
       </div>
-
-      <style>{`
-        @media (max-width: 850px) {
-          .adopsi-cta-grid {
-            grid-template-columns: 1fr !important;
-          }
-        }
-      `}</style>
     </section>
   );
 }

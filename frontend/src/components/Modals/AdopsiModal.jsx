@@ -9,7 +9,6 @@ import {
   UserCheck,
   Upload,
   Search,
-  Sparkles,
   ShieldCheck,
   Clock,
   Building2,

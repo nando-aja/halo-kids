@@ -19,7 +19,6 @@ import {
   HelpCircle,
   Info,
   ChevronRight,
-  Sparkles,
   Ticket,
   X,
   FileCheck

@@ -2,8 +2,6 @@ import React, { useState } from 'react';
 import {
   Upload,
   Bot,
-  Sparkles,
-  CheckCircle2,
   AlertTriangle,
   FileText,
   RefreshCw,
@@ -119,9 +117,6 @@ export default function UserUploadAiExtractor({
             <div>
               <h3 className="text-base sm:text-lg font-black tracking-tight flex items-center gap-2">
                 Asisten AI Verifikasi Berkas Mandiri
-                <span className="text-[10px] font-bold uppercase tracking-wider bg-cyan-400 text-blue-950 px-2 py-0.5 rounded-full">
-                  Pemohon
-                </span>
               </h3>
               <p className="text-xs text-blue-100/90 mt-0.5">
                 AI Single-Agent akan otomatis membaca NIK, nama, dan detail berkas Anda secara real-time.
@@ -192,8 +187,7 @@ export default function UserUploadAiExtractor({
 
             {/* Quick Demo Sample Buttons */}
             <div className="pt-3 border-t border-slate-100">
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
-                <Sparkles size={12} className="text-amber-500" />
+              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
                 Atau Coba Cepat dengan Sampel Dokumen AI:
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
@@ -299,26 +293,6 @@ export default function UserUploadAiExtractor({
             {/* ---------------- SCENARIO A: HIGH CONFIDENCE / SUKSES TERBACA ---------------- */}
             {isHighConfidence && (
               <div className="space-y-4">
-                {/* Success Banner */}
-                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-start gap-3">
-                  <div className="p-2 bg-emerald-500 text-white rounded-xl shrink-0 mt-0.5">
-                    <CheckCircle2 size={20} />
-                  </div>
-                  <div className="text-xs flex-1">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h4 className="font-bold text-emerald-950 text-sm">
-                        Dokumen Berhasil Terbaca Sempurna!
-                      </h4>
-                      <span className="bg-emerald-200 text-emerald-900 font-extrabold text-[10px] px-2 py-0.5 rounded-full">
-                        Akurasi AI {currentResult.skor_confidence}%
-                      </span>
-                    </div>
-                    <p className="text-emerald-800 mt-1 leading-relaxed">
-                      Sistem AI HaloKids telah berhasil mengekstrak data identitas secara otomatis. Silakan tinjau ringkasan di bawah ini sebelum mengirimkan permohonan.
-                    </p>
-                  </div>
-                </div>
-
                 {/* Summary Card Grid */}
                 <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 sm:p-5">
                   <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-200">
