@@ -246,10 +246,6 @@ export default function AiAssistant({
                   <Upload size={15} /><span>2. Upload &amp; Status AI (Sisi Pemohon)</span>
                 </button>
               </div>
-              <div className="hidden md:flex items-center gap-2 text-[11px] text-slate-500 font-medium">
-                {isLoadingApplications ? <RefreshCw size={14} className="animate-spin text-blue-600" /> : <span className={`w-2 h-2 rounded-full ${applicationError ? 'bg-rose-500' : 'bg-emerald-500'}`} />}
-                <span>{isLoadingApplications ? 'Memuat antrean COTA...' : applicationError ? 'Koneksi backend bermasalah' : `Backend tersambung • ${applications.length} pengajuan COTA`}</span>
-              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-3 sm:p-5 bg-slate-100">

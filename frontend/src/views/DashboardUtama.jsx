@@ -1492,28 +1492,6 @@ const handleAnalyzeDonationAdmin = async (donationId) => {
             onNavigateTab={handleNotificationNavigate}
           />
 
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.4rem',
-            background: dashboardRoleMode === 'superadmin' ? 'rgba(225, 29, 72, 0.18)' : 'rgba(217, 119, 6, 0.18)',
-            border: `1px solid ${dashboardRoleMode === 'superadmin' ? 'rgba(251, 113, 133, 0.45)' : 'rgba(252, 211, 77, 0.45)'}`,
-            color: '#ffffff',
-            padding: '0.45rem 0.75rem',
-            borderRadius: '9px',
-            fontSize: '0.75rem',
-            fontWeight: 800,
-            whiteSpace: 'nowrap'
-          }}>
-            {dashboardRoleMode === 'superadmin' ? (
-              <><ShieldCheck size={14} color="#fda4af" /> Super Admin Dinsos</>
-            ) : dashboardRoleMode === 'pantiadmin' ? (
-              <><Building2 size={14} color="#fcd34d" /> Admin LKSA</>
-            ) : (
-              <><User size={14} color="#93c5fd" /> User Publik</>
-            )}
-          </div>
-
           {/* User profile & Logout */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', borderLeft: '1px solid rgba(255,255,255,0.15)', paddingLeft: '0.75rem' }}>
             <div style={{ textAlign: 'right' }}>
