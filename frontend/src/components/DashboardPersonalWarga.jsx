@@ -252,15 +252,6 @@ export default function DashboardPersonalWarga({
 
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-7 sm:py-8">
           <div className="space-y-2.5 max-w-3xl">
-            
-            {/* Badge Warga Terverifikasi */}
-            <div className="flex items-center">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 backdrop-blur-sm shadow-xs">
-                <CheckCircle2 size={13} className="text-emerald-400" />
-                Warga Terverifikasi
-              </span>
-            </div>
-
             {/* Judul Sapaan Hangat */}
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-white flex items-center gap-3">
               <span>Selamat Datang, {userName}!</span>
@@ -290,11 +281,8 @@ export default function DashboardPersonalWarga({
         <section aria-labelledby="status-summary-heading" className="space-y-3.5">
           <div className="flex items-center justify-between">
             <div>
-              <h2 id="status-summary-heading" className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
-                <span>Ringkasan Status Layanan Anda</span>
-                <span className="text-xs font-normal text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
-                  Update Realtime
-                </span>
+              <h2 id="status-summary-heading" className="text-base sm:text-lg font-bold text-slate-900">
+                Ringkasan Status Layanan Anda
               </h2>
             </div>
             <span className="text-xs text-blue-700 font-semibold cursor-default">
@@ -316,12 +304,6 @@ export default function DashboardPersonalWarga({
                     <div className={`w-11 h-11 rounded-xl flex items-center justify-center border shrink-0 transition-transform group-hover:scale-105 ${card.iconBg}`}>
                       <IconComp size={22} />
                     </div>
-                    
-                    {/* Badge Status Berwarna Sesuai Spesifikasi */}
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${card.badgeColor}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${card.badgeDot}`} />
-                      {card.badgeText}
-                    </span>
                   </div>
 
                   {/* Isi Konten Kartu */}
@@ -373,9 +355,6 @@ export default function DashboardPersonalWarga({
                       <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 ${btn.iconContainer}`}>
                         <ActionIcon size={24} />
                       </div>
-                      <span className="text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 rounded-full bg-white/80 border border-slate-200/80 text-slate-600">
-                        {btn.badge}
-                      </span>
                     </div>
 
                     <div>

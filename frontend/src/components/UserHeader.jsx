@@ -76,10 +76,6 @@ export default function UserHeader({
               {title}
             </span>
           </div>
-
-          <span className="text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200/80 px-2 py-0.5 rounded-full shrink-0">
-            {badge}
-          </span>
         </div>
       </div>
 
